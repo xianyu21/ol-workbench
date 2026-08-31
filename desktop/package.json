@@ -1,0 +1,34 @@
+{
+  "name": "axhub-desktop",
+  "version": "1.0.0",
+  "description": "AxHub 原型工作台 · 桌面端（Electron 壳，复用本地 HTTP 服务 axhub-server.js + axhub-viewer.html）",
+  "main": "main.js",
+  "author": "AxHub Viewer",
+  "license": "MIT",
+  "scripts": {
+    "build:viewer": "cd viewer && npm run build",
+    "start": "npm run build:viewer && electron .",
+    "pack": "npm run build:viewer && electron-builder --dir",
+    "dist": "npm run build:viewer && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.axhub.viewer.desktop",
+    "productName": "AxHub 原型工作台",
+    "files": [
+      "main.js",
+      "preload.js",
+      "picker.html"
+    ],
+    "extraResources": [
+      { "from": "axhub-server.js", "to": "axhub-server.js" },
+      { "from": "viewer-dist", "to": "viewer-dist" }
+    ],
+    "win": { "target": "nsis", "signAndEditExecutable": false },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}

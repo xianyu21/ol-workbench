@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AxHub 原型工作台 · 选择目录</title>
+<style>
+  :root{ --bg:#f4efe6; --card:#ffffff; --ink:#1f2b3d; --muted:#7a8799; --line:#ece5d8; --blue:#1296db; --blue-d:#0f7fbd; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px}
+  .wrap{width:100%;max-width:460px;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 40px rgba(31,43,61,.10);overflow:hidden}
+  .hd{padding:26px 28px 18px;display:flex;align-items:center;gap:12px}
+  .logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,var(--blue),#36b1ef);display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+  .logo svg{width:24px;height:24px}
+  .hd h1{font-size:17px;margin:0;line-height:1.3}
+  .hd p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+  .bd{padding:6px 28px 26px}
+  .desc{font-size:13.5px;line-height:1.8;color:var(--muted);margin:0 0 20px}
+  .desc b{color:var(--ink);font-weight:600}
+  .btn{width:100%;height:48px;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;transition:background .15s,transform .05s}
+  .btn:hover{background:var(--blue-d)}
+  .btn:active{transform:translateY(1px)}
+  .tip{margin-top:16px;font-size:12px;color:var(--muted);line-height:1.7;border-top:1px dashed var(--line);padding-top:14px}
+  .tip code{background:#f3f6f9;color:#2b6cb0;border-radius:5px;padding:1px 6px;font-size:11.5px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hd">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>
+      </div>
+      <div>
+        <h1>AxHub 原型工作台</h1>
+        <p>桌面端 · 选择本地导出目录</p>
+      </div>
+    </div>
+    <div class="bd">
+      <p class="desc">请选择 <b>AxHub / Axure 9 标准导出文件夹</b>。该目录通常包含 <b>index.html</b>（框架）和一堆 <b>.html</b> 业务页面，以及 resources / data / images 等共享目录。</p>
+      <button class="btn" id="pick">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="9.5" y1="13.5" x2="14.5" y2="13.5"/></svg>
+        选择 AxHub 导出目录
+      </button>
+      <div class="tip">选择后会记住目录，下次直接进工作台。可在顶部菜单「更换 AxHub 目录」随时切换。</div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('pick').addEventListener('click', function(){
+      this.disabled = true; this.textContent = '正在打开…';
+      window.axhub.selectDir().then(function(p){
+        if(!p){ this.disabled=false; this.textContent='选择 AxHub 导出目录'; }
+        // 选择成功由主进程加载工作台；失败/取消则恢复按钮
+      }.bind(this)).catch(function(){ this.disabled=false; this.textContent='选择 AxHub 导出目录'; }.bind(this));
+    });
+  </script>
+</body>
+</html>
