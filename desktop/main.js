@@ -16,8 +16,69 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
+
+// ---------- 在线更新 ----------
+// 发布源在 package.json build.publish 配置（generic provider，指向存放 latest.yml + exe 的目录）。
+// 未签名应用：win 仅 NSIS 安装版支持自动更新，portable 版需重新下载。
+function setupAutoUpdater() {
+  autoUpdater.logger = { info: log, warn: log, error: log, debug: () => {} };
+  autoUpdater.autoDownload = false; // 下载前询问用户
+
+  let downloading = false;
+
+  autoUpdater.on('update-available', async (info) => {
+    log('update available:', info && info.version);
+    if (!win) return;
+    // GitHub Release 的 body 即更新内容；可能是 markdown/html，去标签后展示
+    let notes = info && (info.releaseNotes || '');
+    if (typeof notes === 'object' && notes) notes = notes.content || ''; // html 形态 {content}
+    notes = String(notes).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+    const detail = notes ? `更新内容：\n\n${notes}\n\n` : '';
+    const r = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: '发现新版本',
+      message: `发现新版本 v${info.version}（当前 v${VERSION}），是否下载更新？`,
+      detail,
+      buttons: ['立即下载', '以后再说'],
+      defaultId: 0, cancelId: 1
+    });
+    if (r.response !== 0 || downloading) return;
+    downloading = true;
+    try {
+      await autoUpdater.downloadUpdate(); // 完成后由 update-downloaded 事件接管安装
+    } catch (e) {
+      downloading = false;
+      log('download error:', e && e.message);
+      if (win) dialog.showErrorBox('更新失败', '下载更新失败：\n' + (e && e.message || e));
+    }
+  });
+
+  autoUpdater.on('download-progress', (p) => {
+    if (win && p && p.percent != null) win.setTitle(`AxHub 原型工作台 · 正在下载更新 ${Math.round(p.percent)}%`);
+  });
+
+  autoUpdater.on('update-downloaded', async () => {
+    if (win) win.setTitle('AxHub 原型工作台');
+    log('update downloaded, quitAndInstall');
+    try { await autoUpdater.quitAndInstall(false, true); } catch (e) { log('install error:', e && e.message); }
+  });
+
+  autoUpdater.on('error', (e) => {
+    downloading = false;
+    if (win) win.setTitle('AxHub 原型工作台');
+    // 静默：无网络/无更新源时只在日志记录
+    log('autoUpdater error:', e && e.message);
+  });
+
+  // 启动 5 秒后静默检查一次
+  setTimeout(() => {
+    log('checkForUpdates...');
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 5000);
+}
 
 // 日志写到 userData，方便用户排查启动问题
 const LOG_FILE = path.join(app.getPath('userData'), 'axhub-main.log');
@@ -152,17 +213,8 @@ function pickDir() {
 }
 
 function buildMenu() {
-  const template = [
-    { label: 'AxHub 原型工作台', submenu: [
-      { label: '更换 AxHub 目录', click: async () => { const r = await pickDir(); if (!r.canceled && r.filePaths[0]) openViewer(r.filePaths[0]); } },
-      { type: 'separator' },
-      { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' },
-      { role: 'quit' }
-    ] },
-    { label: '编辑', submenu: [{ role: 'copy' }, { role: 'selectAll' }] },
-    { label: '视图', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] }
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  // 移除默认应用菜单栏（AxHub 原型工作台 / 编辑 / 视图）
+  Menu.setApplicationMenu(null);
 }
 
 // ---------- IPC：启动屏选择目录 ----------
@@ -180,6 +232,7 @@ else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
     log('app ready');
+    setupAutoUpdater();
     const w = createWindow();
     win = w;
     if (savedDir && fs.existsSync(savedDir)) {

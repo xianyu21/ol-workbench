@@ -138,10 +138,16 @@ function serveFile(req, res, full, status) {
   }
   const total = st.size;
   const type = mimeOf(full);
+  // Axure 导出的资源目录内容基本不变，可长缓存 immutable；HTML/JSON 保持 1 小时以便重新导出后生效
+  const seg0 = path.relative(ROOT, full).split(path.sep)[0];
+  const ext = path.extname(full).toLowerCase();
+  const immutableExt = new Set(['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.mp4', '.webm', '.mp3', '.wav']);
+  const immutableDir = new Set(['resources', 'images', 'files', 'data', 'css', 'js', 'styles', 'scripts', 'fonts']);
+  const isImmutable = immutableExt.has(ext) || immutableDir.has(seg0);
   const headers = {
     'Content-Type': type,
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=3600',
+    'Cache-Control': isImmutable ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
     'Last-Modified': st.mtime.toUTCString(),
     'Access-Control-Allow-Origin': '*'
   };
