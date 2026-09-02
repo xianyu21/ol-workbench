@@ -12,7 +12,7 @@
         @click="open(p.id)" @contextmenu.prevent="menu($event, p)">
         <span class="it-body">
           <span class="it-name">
-            <span v-html="hi(p.name)"></span>
+            <span v-html="hi(p.sname || p.name)"></span>
             <span v-if="p.native" class="badge-ax">框架</span>
             <svg-icon v-if="p.fav" name="star" :size="11" fill class="fav-star" />
           </span>
@@ -99,7 +99,7 @@ function menuAt (e, p) {
 }
 function open (pid) { openProject(pid, false) }
 function openExternal (p) {
-  const w = window.open('./' + encodeURIComponent(p.path), '_blank')
+  const w = window.open('/' + encodeURIComponent(p.path), '_blank')
   if (!w) message.error('浏览器拦截了新窗口')
 }
 function copyText (t) {

@@ -34,14 +34,13 @@ export const store = reactive({
   tabs: load('tabs', []),        // [{id,pid,pinned,title,native,sleep,loading}]
   active: load('active', null),
   settings: Object.assign(
-    { view: 'list', sort: 'name', maxAlive: 8, group: true, hideBackupTip: false, collapsed: false },
+    { view: 'list', sort: 'name', maxAlive: 8, group: true, collapsed: false },
     load('settings', {})
   ),
   q: '',
   filterTags: [],
   secClosed: load('secClosed', {}),
   recent: load('recent', []),
-  bkTip: ''                // 备份提示条文案（'' = 隐藏）
 })
 
 export const tabSeq = { n: load('tabSeq', 1) }
@@ -87,8 +86,8 @@ export function initials (name) {
   return s.slice(0, 2).toUpperCase() || '?'
 }
 // 同源相对路径（server 根 = AxHub 目录）
-export function enc (p) { return './' + encodeURIComponent(p) }
-export function srcOf (p) { return p.native ? './index.html' : enc(p.path) }
+export function enc (p) { return '/' + encodeURIComponent(p) }
+export function srcOf (p) { return p.native ? '/index.html' : enc(p.path) }
 
 export function getP (id) {
   if (id === NATIVE_ID) return NATIVE_PAGE
@@ -110,7 +109,6 @@ export async function fetchTree () {
     store.rootDir = data.root || ''
     store.hasData = !!data.hasData
     store.loadError = ''
-    maybeBackupTip()
   } catch (e) {
     store.serverOk = false
     store.loadError = '无法连接本地服务'
@@ -142,7 +140,6 @@ export function bump (p) {
   r.unshift(p.id)
   store.recent = r.slice(0, 12)
   saveRaw('recent', store.recent)
-  maybeBackupTip()
 }
 
 // forceNew=true 强制新标签；否则复用未固定的当前标签（浏览器式替换）
@@ -234,33 +231,22 @@ export const sidebarSections = computed(() => {
   return sections
 })
 
-// 多级分组树：以文件名中「-」分段作为层级路径
-//   例如 00-07 / 00-07-01 / 00-07-02 会构成 00 › 07 › {01, 02} 的嵌套结构
+// 单层分组：按编号前缀首段（如 00-07-01 → 00）分组，组内平铺页面，不再嵌套
+function parsePrefix (name) {
+  const m = /^(\d+(?:-\d+)*)[_]?(.*)$/.exec(String(name || ''))
+  if (!m) return null
+  return { segs: m[1].split('-'), title: m[2].replace(/^_+/, '') }
+}
 function buildTree (list) {
-  const root = { children: {} }
+  const groups = {}; const order = []
   list.forEach(p => {
-    const base = String(p.name == null ? '' : p.name)
-    const segs = base.split('-').filter(s => s.length)
-    let node = root
-    for (let i = 0; i < segs.length; i++) {
-      const seg = segs[i]
-      const childKey = (node === root ? '' : node.key + '/') + seg
-      if (!node.children[seg]) {
-        node.children[seg] = { key: childKey, title: childKey.split('/').join('-'), icon: 'folder', items: [], children: {} }
-      }
-      node = node.children[seg]
-    }
-    node.items.push(p)
+    const pp = parsePrefix(String(p.name == null ? '' : p.name))
+    const g = pp ? pp.segs[0] : '未分组'
+    if (!groups[g]) { groups[g] = []; order.push(g) }
+    groups[g].push(p)
   })
-  const toArr = (node, depth) => {
-    const arr = Object.keys(node.children).map(seg => {
-      const c = node.children[seg]
-      return { key: c.key, title: c.title, icon: c.icon, items: c.items, children: toArr(c, depth + 1), depth }
-    })
-    arr.sort((a, b) => a.key.localeCompare(b.key, 'zh'))
-    return arr
-  }
-  return toArr(root, 0)
+  order.sort((a, b) => a.localeCompare(b, 'zh'))
+  return order.map(g => ({ key: 'g_' + g, title: g, icon: g === '未分组' ? 'layers' : 'folder', items: groups[g], children: [], depth: 0 }))
 }
 
 // 收集所有分组（含嵌套）的 key，用于全部折叠/展开
@@ -297,14 +283,6 @@ export function ancestorKeysOfPid (sections, pid) {
   }
   walk(sections, [])
   return path
-}
-
-/* ---------- 备份提示 ---------- */
-export function maybeBackupTip () {
-  if (store.settings.hideBackupTip) { store.bkTip = ''; return }
-  const real = store.projects.filter(p => !p.native).length
-  const meta = store.projects.filter(p => (p.tags && p.tags.length) || p.cover || p.fav || p.renamed).length
-  store.bkTip = (real >= 30 || meta >= 10) ? ('已积累 ' + real + ' 个页面、' + meta + ' 项自定义，建议导出备份。') : ''
 }
 
 /* ---------- 标签页管理弹窗辅助 ---------- */
@@ -369,7 +347,6 @@ export async function selectDirectory () {
       store.loaded = true
       store.serverOk = true
       store.loadError = ''
-      maybeBackupTip()
       message.success('已加载目录：' + handle.name, 2)
       return handle.name
     } catch (e) {

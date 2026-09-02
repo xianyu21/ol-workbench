@@ -1,15 +1,12 @@
 <template>
-  <a-modal :open="ui.backup" title="备份 / 恢复" :footer="null" :width="520" @cancel="ui.backup = false">
+  <a-modal :open="ui.backup" title="恢复备份" :footer="null" :width="520" @cancel="ui.backup = false">
     <a-alert type="warning" show-icon style="margin-bottom:14px">
       <template #message>
-        标签、收藏、标签页布局存在浏览器本地（localStorage）。<b>换环境或清缓存会丢</b>，请定期导出。AxHub 文件本身在磁盘不受影响。
+        标签、收藏、标签页布局存在浏览器本地（localStorage）。<b>换环境或清缓存会丢</b>，如有旧备份可用下方「导入恢复」迁移。AxHub 文件本身在磁盘不受影响。
       </template>
     </a-alert>
     <div style="display:flex;gap:9px;margin-bottom:16px">
-      <a-button type="primary" style="flex:1;height:42px" @click="exportJSON">
-        <template #icon><svg-icon name="dl" :size="16" /></template>导出 JSON 备份
-      </a-button>
-      <a-button style="flex:1;height:42px" @click="pickImport">
+      <a-button type="primary" block style="flex:1;height:42px" @click="pickImport">
         <template #icon><svg-icon name="ul" :size="16" /></template>导入恢复
       </a-button>
     </div>
@@ -33,29 +30,10 @@
 import { ref } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import SvgIcon from '../SvgIcon.vue'
-import { store, persist, pad, DEF_TAGS } from '../../store.js'
+import { store, persist, DEF_TAGS } from '../../store.js'
 import { ui } from '../../ui.js'
 
 const fileRef = ref(null)
-
-function exportJSON () {
-  const data = {
-    _app: 'axhub-viewer', _ver: 2, _at: new Date().toISOString(),
-    projects: store.projects, tags: store.tags, tabs: store.tabs,
-    active: store.active, recent: store.recent
-  }
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  const d = new Date()
-  a.download = 'axhub-viewer-backup-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json'
-  a.href = URL.createObjectURL(blob)
-  document.body.appendChild(a); a.click()
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1500)
-  store.settings.hideBackupTip = true
-  store.bkTip = ''
-  persist()
-  message.success('备份已导出', 2.6)
-}
 
 function pickImport () { fileRef.value.value = ''; fileRef.value.click() }
 function onFile (e) {

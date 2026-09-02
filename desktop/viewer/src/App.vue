@@ -25,22 +25,13 @@
         <a-tooltip title="标签管理">
           <a-button @click="ui.tagManage = true"><template #icon><svg-icon name="tag" :size="15" /></template></a-button>
         </a-tooltip>
-        <a-tooltip title="备份 / 恢复">
+        <a-tooltip title="恢复备份">
           <a-button @click="ui.backup = true"><template #icon><svg-icon name="box" :size="15" /></template></a-button>
         </a-tooltip>
         <a-tooltip title="设置">
           <a-button @click="ui.settings = true"><template #icon><svg-icon name="gear" :size="15" /></template></a-button>
         </a-tooltip>
       </header>
-
-      <!-- 备份提示条 -->
-      <div v-if="store.bkTip" class="bkbar">
-        <svg-icon name="warn" :size="15" />
-        <span>{{ store.bkTip }}</span>
-        <span class="sp" />
-        <a-button type="link" size="small" @click="ui.backup = true">立即导出</a-button>
-        <a-button type="link" size="small" @click="dismissBackup">知道了</a-button>
-      </div>
 
       <!-- 未选择目录 / 空目录引导条 -->
       <div v-if="store.loaded && !store.projects.length && !store.loadError" class="emptybar">
@@ -91,11 +82,6 @@ function rescan () {
   message.info('正在重新扫描目录…', 1.5)
   store.loaded = false
   fetchTree()
-}
-function dismissBackup () {
-  store.settings.hideBackupTip = true
-  store.bkTip = ''
-  persist()
 }
 function openNative () {
   const ex = store.tabs.filter(t => t.pid === NATIVE_ID)[0]
