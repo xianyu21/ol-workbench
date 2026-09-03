@@ -2,7 +2,9 @@
 
 ## 未发布 (Unreleased)
 
-（暂无）
+### v1.0.10
+- 🐛 修复安装后首次启动可能崩溃的问题：关闭 GPU 硬件加速（显卡驱动与 Chromium GPU 进程兼容问题，反复访问冲突崩溃），工作台为 DOM/iframe 渲染不受影响
+- 🔇 关闭崩溃报告（disable-crash-reporter / disable-crashpad），避免被杀毒软件拦截时弹出无意义的 "Error launching CrashSender.exe" 二次报错框
 
 <!--
 发版流程：
