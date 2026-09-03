@@ -18,7 +18,7 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 
 // ---------- 在线更新 ----------
 // 发布源在 package.json build.publish 配置（generic provider，指向存放 latest.yml + exe 的目录）。
@@ -242,6 +242,21 @@ ipcMain.handle('picker:select', async () => {
   if (r.canceled || !r.filePaths.length) return null;
   await openViewer(r.filePaths[0]);
   return r.filePaths[0];
+});
+
+// ---------- IPC：版本号 / 手动检查更新 ----------
+ipcMain.handle('app:version', () => VERSION);
+ipcMain.handle('update:check', async () => {
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    const info = r && r.updateInfo;
+    if (!info) return { ok: false, error: '无法获取更新信息' };
+    // 有新版本时 update-available 事件会弹窗展示更新内容并询问下载
+    return { ok: true, available: info.version !== VERSION, version: info.version };
+  } catch (e) {
+    log('manual check error:', e && e.message);
+    return { ok: false, error: (e && e.message || String(e)).split('\n')[0].slice(0, 160) };
+  }
 });
 
 // ---------- 生命周期 ----------

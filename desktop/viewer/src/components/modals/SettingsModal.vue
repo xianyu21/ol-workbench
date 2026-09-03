@@ -24,6 +24,13 @@
       <a-slider v-model:value="st.maxAlive" :min="2" :max="24" :marks="{ 2: '2', 8: '8', 16: '16', 24: '24' }" />
       <div class="hint">已加载页面常驻内存，切换零延迟。超量时最久未用的<b>未固定</b>标签释放（固定的不释放）。体积大就调小。</div>
     </div>
+    <div class="rowsp" style="margin-top:10px">
+      <div>
+        <b>版本与更新</b>
+        <div class="hint">当前版本 v{{ appVersion }}<template v-if="lastCheck"> · 上次检查 {{ lastCheck }}</template></div>
+      </div>
+      <a-button :loading="checking" @click="checkUpdate">检查更新</a-button>
+    </div>
     <a-collapse style="margin-top:8px">
       <a-collapse-panel key="kb" header="快捷键">
         <div class="kb">
@@ -45,12 +52,39 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { store, persist, selectDirectory } from '../../store.js'
 import { ui } from '../../ui.js'
 import SvgIcon from '../SvgIcon.vue'
 
 const st = store.settings
+
+const appVersion = ref('…')
+const checking = ref(false)
+const lastCheck = ref('')
+
+onMounted(async () => {
+  if (window.axhub?.version) appVersion.value = await window.axhub.version()
+})
+
+async function checkUpdate () {
+  if (!window.axhub?.checkUpdate) { message.warning('当前环境不支持在线更新'); return }
+  checking.value = true
+  try {
+    const r = await window.axhub.checkUpdate()
+    lastCheck.value = new Date().toLocaleTimeString()
+    if (!r || !r.ok) { message.error(r && r.error || '检查更新失败'); return }
+    if (r.available) {
+      // 主进程已弹窗展示更新内容并询问是否下载
+      message.info(`发现新版本 v${r.version}，请在弹窗中确认下载`)
+    } else {
+      message.success(`已是最新版本（v${appVersion.value}）`)
+    }
+  } finally {
+    checking.value = false
+  }
+}
 
 function chooseDir () { selectDirectory() }
 function ok () {
