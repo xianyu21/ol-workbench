@@ -18,7 +18,7 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 
 // ---------- 在线更新 ----------
 // 发布源在 package.json build.publish 配置（generic provider，指向存放 latest.yml + exe 的目录）。
@@ -195,9 +195,28 @@ async function openViewer(d) {
     // 强制当前窗口 session 直连，不经过系统代理/VPN（否则 127.0.0.1 可能被代理拒绝）
     await w.webContents.session.setProxy({ proxyRules: 'direct://' });
     log('proxy set to direct');
-    await w.loadURL(url);
-    log('loadURL success');
-    buildMenu();
+    // 环境里的 VPN/安全软件可能偶发拦截 localhost（Node ping 正常但 Chromium 报 ERR_FAILED(-2)），
+    // 失败后延迟重试，并在最后一次改用 localhost 主机名兜底
+    const target = url;
+    let lastErr = null;
+    for (let i = 1; i <= 4; i++) {
+      const attemptUrl = i === 4 ? target.replace('127.0.0.1', 'localhost') : target;
+      try {
+        if (i > 1) {
+          log('loadURL retry', i, attemptUrl);
+          await new Promise(r => setTimeout(r, 1000));
+          try { await w.webContents.session.setProxy({ proxyRules: 'direct://' }); } catch (e) {}
+        }
+        await w.loadURL(attemptUrl);
+        log('loadURL success');
+        buildMenu();
+        return;
+      } catch (e) {
+        lastErr = e;
+        log('loadURL attempt', i, 'failed:', e && e.message);
+      }
+    }
+    throw lastErr;
   } catch (e) {
     log('openViewer ERROR:', e && e.message, e && e.stack);
     dialog.showErrorBox('无法启动本地服务', (e && e.message || String(e)) + '\n\n日志路径：\n' + LOG_FILE);
