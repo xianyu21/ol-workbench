@@ -18,17 +18,18 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.11';
+const VERSION = '1.0.12';
 
-// 未签名应用安装后首次启动可能被杀毒软件扫描拦截导致原生崩溃，
-// 并弹出 "Error launching CrashSender.exe"（崩溃报告进程也被拦截）。
-// 关闭崩溃报告，避免这个无意义的二次弹窗；崩溃本身第二次启动即恢复。
-// 本机显卡驱动与 Chromium GPU 进程存在兼容问题：GPU 进程反复崩溃（0x80000003），
-// 连崩 6 次后 Chromium 直接 FATAL 退出（"GPU process isn't usable. Goodbye."），
-// 即安装后启动 "has stopped working" 的来源。实测 in-process-gpu（GPU 代码并入主进程）
-// 是唯一稳定方案；配合禁用硬件加速，工作台 DOM/iframe 渲染不受影响。
+// 本机环境两处启动崩溃均已实测定位并验证修复：
+// 1) GPU 进程反复崩溃（0x80000003）连崩 6 次后 Chromium FATAL 退出（"GPU process isn't usable."）
+//    → in-process-gpu + 禁用硬件加速
+// 2) 安全软件向沙箱渲染进程注入 DLL，渲染进程启动即崩（loadURL 报 ERR_FAILED(-2)，
+//    仅 Program 目录安装版复现，解包版不触发）→ 关闭渲染进程沙箱。
+//    渲染层 contextIsolation 开启、nodeIntegration 关闭，仅加载本地同源内容，关沙箱风险可控。
+// 另：崩溃报告（CrashSender.exe）被拦截时会二次弹框，一并关闭。
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('in-process-gpu');
+app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-crash-reporter');
 app.commandLine.appendSwitch('disable-crashpad');
 
