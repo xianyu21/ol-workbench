@@ -1,6 +1,11 @@
 # Changelog
 
-## 未发布 (Unreleased)
+## v1.0.13 · 2026-09-05
+
+> 本版为稳定性验证发布（同时验证在线更新链路），包含 v1.0.10–v1.0.12 全部修复。
+
+### v1.0.13
+- 🧪 在线更新链路验证发布
 
 ### v1.0.12
 - 🐛 彻底修复安装版启动崩溃/白屏报错（"has stopped working" + "Error launching CrashSender.exe"）：

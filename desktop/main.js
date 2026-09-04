@@ -18,7 +18,7 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.12';
+const VERSION = '1.0.13';
 
 // 本机环境两处启动崩溃均已实测定位并验证修复：
 // 1) GPU 进程反复崩溃（0x80000003）连崩 6 次后 Chromium FATAL 退出（"GPU process isn't usable."）
