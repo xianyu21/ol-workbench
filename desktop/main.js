@@ -18,16 +18,19 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.10';
+const VERSION = '1.0.11';
 
 // 未签名应用安装后首次启动可能被杀毒软件扫描拦截导致原生崩溃，
 // 并弹出 "Error launching CrashSender.exe"（崩溃报告进程也被拦截）。
 // 关闭崩溃报告，避免这个无意义的二次弹窗；崩溃本身第二次启动即恢复。
+// 本机显卡驱动与 Chromium GPU 进程存在兼容问题：GPU 进程反复崩溃（0x80000003），
+// 连崩 6 次后 Chromium 直接 FATAL 退出（"GPU process isn't usable. Goodbye."），
+// 即安装后启动 "has stopped working" 的来源。实测 in-process-gpu（GPU 代码并入主进程）
+// 是唯一稳定方案；配合禁用硬件加速，工作台 DOM/iframe 渲染不受影响。
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('in-process-gpu');
 app.commandLine.appendSwitch('disable-crash-reporter');
 app.commandLine.appendSwitch('disable-crashpad');
-// 本机显卡驱动与 Chromium GPU 进程存在兼容问题（反复 0xC0000005 崩溃，
-// 即安装后首次启动 "has stopped working" 的来源）；工作台为普通 DOM/iframe 渲染，不需要 GPU 加速
-app.disableHardwareAcceleration();
 
 // ---------- 在线更新 ----------
 // 发布源在 package.json build.publish 配置（generic provider，指向存放 latest.yml + exe 的目录）。
