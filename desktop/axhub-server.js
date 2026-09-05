@@ -26,6 +26,8 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const { exec } = require('child_process');
+// 页面扫描纯逻辑单源（框架页过滤/页面 ID/分组/排序），浏览器端内联同一份文件
+const AxHubScan = require('./scan-shared.js');
 
 // 工作台 UI：Vue3 + antdv 构建产物目录（desktop/viewer/ → vite build → viewer-dist/）
 // 开发期 __dirname = desktop/，打包后 __dirname = resources/，两种形态下 viewer-dist 都与 server 同目录。
@@ -83,36 +85,25 @@ function safeJoin(root, reqPath) {
   return t;
 }
 
-// ---------- 扫描 AxHub 标准扁平导出 ----------
-const FRAME_FILES = new Set(['index.html', 'start.html', 'start_c_1.html', 'start_with_pages.html', '通用组件.html', 'start_with_pages (1).html']);
+// ---------- 扫描 AxHub 标准扁平导出（纯逻辑见 scan-shared.js 单源） ----------
 function scanAxHub(root) {
   let entries;
   try { entries = fs.readdirSync(root, { withFileTypes: true }); }
   catch (e) { return { error: '无法读取目录: ' + e.message, pages: [], root, name: path.basename(root) }; }
   const pages = [];
-  let maxDepth = 0;
   for (const ent of entries) {
     if (!ent.isFile()) continue;
     const f = ent.name;
-    if (!/\.html?$/i.test(f)) continue;
-    const low = f.toLowerCase();
-    if (FRAME_FILES.has(low)) continue;
-    if (/^start[^.]*\.html?$/i.test(f)) continue; // 任何 start*.html 都是框架入口
-    if (low === '通用组件.html') continue;
+    if (AxHubScan.isFrameFile(f)) continue;
     let st;
     try { st = fs.statSync(path.join(root, f)); } catch (e) { continue; }
-    const name = f.replace(/\.html?$/i, '');
-    // AxHub 命名形如 NN-NN_页面名 或 NN-NN-NN_页面名；取首个 '-' 前作为模块分组
-    const seg = name.split('-');
-    const group = seg.length > 1 ? seg[0] : '未分组';
-    let h = 5381; for (let i = 0; i < f.length; i++) h = ((h << 5) + h + f.charCodeAt(i)) >>> 0;
+    const name = AxHubScan.baseNameOf(f);
     pages.push({
-      id: 'p' + h.toString(36) + '_' + f.length.toString(36),
-      name, path: f, size: st.size, group, mtime: st.mtimeMs
+      id: AxHubScan.computePageId(f),
+      name, path: f, size: st.size, group: AxHubScan.groupOf(name), mtime: st.mtimeMs
     });
-    maxDepth = Math.max(maxDepth, name.split('-').length);
   }
-  pages.sort((a, b) => a.path.localeCompare(b.path, 'zh'));
+  AxHubScan.sortPages(pages);
   const hasData = fs.existsSync(path.join(root, 'data', 'document.js'));
   const hasIndex = fs.existsSync(path.join(root, 'index.html'));
   return {
@@ -125,7 +116,9 @@ function scanAxHub(root) {
 }
 
 // ---------- 静态文件响应（支持 Range / 304） ----------
-function serveFile(req, res, full, status) {
+// allowOrigin：仅工作台 UI 路径按需放行（浏览器带 Origin 的跨源请求回显其 Origin）；
+// 原型页面与 API 一律不发 CORS 头，防止用户浏览器里打开的任意网页探测本地目录。
+function serveFile (req, res, full, status, allowOrigin) {
   let st;
   try { st = fs.statSync(full); } catch (e) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return;
@@ -133,7 +126,7 @@ function serveFile(req, res, full, status) {
   if (st.isDirectory()) {
     // 尝试目录下的 index.html
     const idx = path.join(full, 'index.html');
-    if (fs.existsSync(idx)) return serveFile(req, res, idx, status);
+    if (fs.existsSync(idx)) return serveFile(req, res, idx, status, allowOrigin);
     res.writeHead(403); res.end('Forbidden'); return;
   }
   const total = st.size;
@@ -148,9 +141,9 @@ function serveFile(req, res, full, status) {
     'Content-Type': type,
     'Accept-Ranges': 'bytes',
     'Cache-Control': isImmutable ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
-    'Last-Modified': st.mtime.toUTCString(),
-    'Access-Control-Allow-Origin': '*'
+    'Last-Modified': st.mtime.toUTCString()
   };
+  if (allowOrigin) headers['Access-Control-Allow-Origin'] = allowOrigin;
   const range = req.headers.range;
   if (range) {
     const m = /bytes=(\d*)-(\d*)/.exec(range);
@@ -208,16 +201,18 @@ function requestHandler(req, res) {
       const html = getViewerHtml();
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return;
     }
-    // 工作台 UI 静态资源（Vue 构建产物 assets 等），与 AxHub 页面同源
+    // 工作台 UI 静态资源（Vue 构建产物 assets 等），与 AxHub 页面同源；
+    // 仅此路径对跨源请求按需回显 Origin（无 Origin 的同源请求不发 CORS 头）
     if (p.startsWith('/_axviewer/')) {
       const sub = p.slice('/_axviewer/'.length);
       const full = safeJoin(VIEWER_DIR, sub);
       if (!full) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Forbidden'); return; }
-      serveFile(req, res, full); return;
+      serveFile(req, res, full, undefined, req.headers.origin || null); return;
     }
     if (p === '/_api/tree' || p === '/_api/tree/') {
       const data = scanAxHub(ROOT);
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      // 不带 CORS 头：页面清单含本地目录信息，禁止任意网页跨源读取
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(data)); return;
     }
     if (p === '/_api/ping') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }

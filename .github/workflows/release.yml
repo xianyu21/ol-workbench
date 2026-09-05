@@ -1,0 +1,46 @@
+# Release 自动化：推送 v* tag 时构建 Windows 安装包并创建 Release 草稿。
+# 遵守项目"不自动发版"规则：只出草稿，正式发布由维护者确认后手动点击 Publish。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps (desktop)
+        working-directory: desktop
+        run: npm ci
+
+      - name: Install deps (viewer)
+        working-directory: desktop/viewer
+        run: npm ci
+
+      - name: Build viewer
+        working-directory: desktop
+        run: npm run build:viewer
+
+      - name: Build installers (NSIS + portable)
+        working-directory: desktop
+        run: npx electron-builder --win --publish never
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            desktop/dist/AxHub-Setup-*.exe
+            desktop/dist/AxHub-Portable-*.exe
+            desktop/dist/latest.yml

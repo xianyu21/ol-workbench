@@ -12,13 +12,18 @@
  * HTTP 版已按用户要求移除（仅保留 AxHub-HTTP-Server.zip 交付）；
  * 服务（axhub-server.js）复用本地 HTTP 服务，工作台 UI 为 Vue 构建产物 viewer-dist，均为 desktop/ 桌面端自有文件。
  */
-const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
+const userStore = require('./user-store.js');
 
-const VERSION = '1.0.18';
+// 版本号单源：读自 package.json（electron-builder 同源），发版只改一处
+const VERSION = app.getVersion();
+// portable 版由 electron-builder 运行时注入该环境变量；不支持自动更新，检查到新版本只给下载指引
+const PORTABLE = !!process.env.PORTABLE_EXECUTABLE_DIR;
+const RELEASES_URL = 'https://github.com/xianyu21/ol-workbench/releases';
 
 // 本机环境两处启动崩溃均已实测定位并验证修复：
 // 1) GPU 进程反复崩溃（0x80000003）连崩 6 次后 Chromium FATAL 退出（"GPU process isn't usable."）
@@ -43,12 +48,24 @@ function setupAutoUpdater() {
   let downloading = false;
 
   autoUpdater.on('update-available', async (info) => {
-    log('update available:', info && info.version);
+    log('update available:', info && info.version, PORTABLE ? '(portable)' : '');
     if (!win) return;
     // GitHub Release 的 body 即更新内容；可能是 markdown/html，去标签后展示
     let notes = info && (info.releaseNotes || '');
     if (typeof notes === 'object' && notes) notes = notes.content || ''; // html 形态 {content}
     notes = String(notes).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+    if (PORTABLE) {
+      // portable 版无法自动更新，给明确指引而不是下载询问
+      const r = await dialog.showMessageBox(win, {
+        type: 'info',
+        title: '发现新版本',
+        message: `发现新版本 v${info.version}（当前 v${VERSION}）。`,
+        detail: (notes ? `更新内容：\n\n${notes}\n\n` : '') + '便携版不支持自动更新，请到 Releases 页面重新下载。',
+        buttons: ['打开 Releases 页面', '以后再说'], defaultId: 0, cancelId: 1
+      });
+      if (r.response === 0) shell.openExternal(RELEASES_URL).catch(() => {});
+      return;
+    }
     const detail = notes ? `更新内容：\n\n${notes}\n\n` : '';
     const r = await dialog.showMessageBox(win, {
       type: 'info',
@@ -70,7 +87,11 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('download-progress', (p) => {
-    if (win && p && p.percent != null) win.setTitle(`AxHub 原型工作台 · 正在下载更新 ${Math.round(p.percent)}%`);
+    if (win && p && p.percent != null) {
+      win.setTitle(`AxHub 原型工作台 · 正在下载更新 ${Math.round(p.percent)}%`);
+      // 页面内进度提示（窗口标题太容易被忽略）
+      try { win.webContents.send('update:progress', Math.round(p.percent)); } catch (e) {}
+    }
   });
 
   autoUpdater.on('update-downloaded', async () => {
@@ -82,23 +103,37 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', (e) => {
     downloading = false;
-    if (win) win.setTitle('AxHub 原型工作台');
+    if (win) {
+      win.setTitle('AxHub 原型工作台');
+      try { win.webContents.send('update:progress', null); } catch (e2) {}
+    }
     // 静默：无网络/无更新源时只在日志记录
     log('autoUpdater error:', e && e.message);
   });
 
-  // 启动 5 秒后静默检查一次
-  setTimeout(() => {
+  // 启动 5 秒后静默检查一次，此后每 24 小时再查一次（长期后台运行也能及时知道新版本）
+  const checkSilently = () => {
     log('checkForUpdates...');
     autoUpdater.checkForUpdates().catch(() => {});
-  }, 5000);
+  };
+  setTimeout(checkSilently, 5000);
+  setInterval(checkSilently, 24 * 60 * 60 * 1000);
 }
 
-// 日志写到 userData，方便用户排查启动问题
+// 日志写到 userData，方便用户排查启动问题；超 1MB 自动轮转保留一份 .old，防止无限增长
 const LOG_FILE = path.join(app.getPath('userData'), 'axhub-main.log');
+const LOG_MAX_BYTES = 1024 * 1024;
 function log(...args) {
   const line = `[${new Date().toISOString()}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}`;
-  try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (e) { /* ignore */ }
+  try {
+    try {
+      if (fs.statSync(LOG_FILE).size > LOG_MAX_BYTES) {
+        try { fs.unlinkSync(LOG_FILE + '.old'); } catch (e) { /* 不存在 */ }
+        fs.renameSync(LOG_FILE, LOG_FILE + '.old');
+      }
+    } catch (e) { /* 文件不存在，直接写 */ }
+    fs.appendFileSync(LOG_FILE, line + '\n');
+  } catch (e) { /* ignore */ }
   console.log(line);
 }
 
@@ -124,6 +159,7 @@ try {
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const CONFIG = path.join(app.getPath('userData'), 'axhub-desktop.json');
+userStore.init(app.getPath('userData')); // 用户核心数据落盘（收藏/标签/最近访问/标签页布局）
 
 log('main.js VERSION=', VERSION);
 log('__dirname=', __dirname);
@@ -212,13 +248,21 @@ ipcMain.on('close:apply', (e, action, remember) => {
 // 设置页改关闭行为：仅保存，不触发动作（'' = 每次询问）
 ipcMain.on('close:save', (e, action) => saveConfig({ closeAction: action || '' }));
 
+// ---------- IPC：用户核心数据磁盘持久化 ----------
+// preload 启动时 sendSync 拉取一次（磁盘为事实来源；文件缺失返回 null，渲染层保留现有 localStorage = 旧数据自动迁移）
+ipcMain.on('user-data:load-sync', (e) => { e.returnValue = userStore.load(); });
+ipcMain.on('user-data:save', (e, data) => userStore.save(data));
+ipcMain.on('user-data:clear', () => userStore.clear());
+
 function createWindow() {
   const w = new BrowserWindow({
     width: 1280, height: 860, minWidth: 900, minHeight: 600,
     backgroundColor: '#f4efe6',
     show: false,
     title: 'AxHub 原型工作台',
-    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, webSecurity: false }
+    // webSecurity 保持默认开启：工作台与原型页均由本地服务同源服务，无需关闭。
+    // 若个别导出确需跨域，由服务端精确放行（见 axhub-server.js 的 CORS 策略），不走全局关闭。
+    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false }
   });
   w.once('ready-to-show', () => w.show());
   w.on('close', (e) => handleClose(w, e));
@@ -349,7 +393,7 @@ ipcMain.handle('update:check', async () => {
     const info = r && r.updateInfo;
     if (!info) return { ok: false, error: '无法获取更新信息' };
     // 有新版本时 update-available 事件会弹窗展示更新内容并询问下载
-    return { ok: true, available: info.version !== VERSION, version: info.version };
+    return { ok: true, available: info.version !== VERSION, version: info.version, portable: PORTABLE };
   } catch (e) {
     log('manual check error:', e && e.message);
     return { ok: false, error: (e && e.message || String(e)).split('\n')[0].slice(0, 160) };
@@ -376,7 +420,7 @@ else {
     }
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-  // 更新安装/托盘退出走 app.quit() → before-quit 放行窗口 close
-  app.on('before-quit', () => { quitting = true; });
+  // 更新安装/托盘退出走 app.quit() → before-quit 放行窗口 close，并把待写数据立即落盘
+  app.on('before-quit', () => { quitting = true; userStore.flush(); });
   app.on('window-all-closed', () => { if (server) { try { server.close(); } catch (e) {} } if (process.platform !== 'darwin') app.quit(); });
 }
