@@ -36,7 +36,3 @@ viewer-dist/
 
 # WorkBuddy internal
 .workbuddy/
-
-# Stray junk file (accidental: contains a build-asset path fragment)
-"
-desktop/

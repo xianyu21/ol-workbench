@@ -7,11 +7,11 @@ Electron 桌面端原型查看器：本地**零依赖** HTTP 服务 + **Vue 3 + 
 
 ## 功能特性
 
-- **项目浏览**：左侧项目列表，支持搜索、5 种排序、标签筛选 / 管理、收藏、分组折叠、最近打开。
+- **项目浏览**：左侧项目列表，支持搜索、标签筛选 / 管理、收藏、分组折叠、最近访问分组（置顶 5 条）。
 - **多标签查看**：固定、双击固定、中键关闭、右键批量关闭；iframe 池 + LRU 保活（`maxAlive` 可调）与休眠唤醒。
-- **iframe 页内联动**：同源拦截页内链接并联动 tab 栏（跨域 / 新窗口 / 锚点不拦截）；点击 tab 后左侧列表自动滚动定位并高亮。
+- **iframe 页内联动**：同源拦截页内链接并联动 tab 栏（跨域 / 新窗口 / 锚点不拦截）；Axure 式 JS 跳转（location 赋值）命中已收录页面时标签栏同步切换；点击 tab 后左侧列表自动滚动定位并高亮。
 - **搜索高亮**：`Ctrl+K` 全库搜索并高亮命中。
-- **数据管理**：重命名、标签改色 / 改名 / 删除、备份导出 / 导入（合并 / 覆盖）、清空数据。
+- **数据管理**：重命名、标签改色 / 改名 / 删除、备份导入恢复（合并）、清空数据；收藏 / 标签 / 最近访问 / 标签页布局**落盘持久化**（userData JSON），换端口、清缓存、升级不丢失。
 - **快捷键**：`Ctrl+K/D/R/B`、`Alt+W/1-9/←→`；侧栏宽度拖拽与收缩（`Ctrl+B`）。
 - **列表极简**：不显示文件大小，列表项仅首字母色块（无缩略图）。
 
@@ -28,15 +28,18 @@ Electron 桌面端原型查看器：本地**零依赖** HTTP 服务 + **Vue 3 + 
 ```
 desktop/
 ├─ main.js               # Electron 主进程：内起本地服务 + BrowserWindow 打开 /_axviewer
-├─ preload.js            # 选目录 IPC
+├─ preload.js            # IPC 桥：选目录 / 更新 / 关闭行为 / 用户数据落盘
 ├─ picker.html           # 首屏选择 AxHub 导出目录
 ├─ axhub-server.js       # 零依赖本地服务：/_api/tree 扫描；/_axviewer 服务 Vue 构建产物（同源）
+├─ scan-shared.js        # ★ 页面扫描单源纯逻辑（服务端 require + 浏览器 vite 内联，页面 ID 两端一致）
+├─ user-store.js         # 用户核心数据磁盘存储（userData JSON，防抖原子写）
+├─ test/                 # node:test 测试（npm test）：本地服务请求层 + 存储模块 + 扫描单源
 ├─ viewer/               # ★ Vue3 + Vite + antdv 工程（改 UI 只改这里）
 │  ├─ package.json       # vue / ant-design-vue / vite
 │  ├─ vite.config.js     # base:'./'，outDir='../viewer-dist'
 │  └─ src/
 │     ├─ main.js         # 入口，全量注册 antdv
-│     ├─ store.js        # 全局状态 + localStorage（wb_axhub_*，与旧版同 key 无缝迁移）
+│     ├─ store.js        # 全局状态 + 数据读写（磁盘持久化为主，localStorage 为缓存）
 │     ├─ ui.js / ctx.js  # 弹窗状态 / 全局右键菜单
 │     ├─ App.vue         # 布局 + 顶栏 + 快捷键 + antdv 主题（主色 #1296db）
 │     └─ components/
@@ -71,6 +74,7 @@ npm start            # 构建 viewer 并启动桌面端
 | 命令 | 说明 |
 |---|---|
 | `npm start` | 自动构建 viewer + 启动桌面端（日常开发用这个） |
+| `npm test` | 运行测试（Node 内置 test runner，零依赖） |
 | `npm run build:viewer` | 只构建 Vue UI（产物到 `viewer-dist/`） |
 | `npm run pack` | 构建后出解压版 exe（`dist/win-unpacked/`） |
 | `npm run dist` | 构建后出 NSIS 安装包 |
@@ -80,14 +84,16 @@ npm start            # 构建 viewer 并启动桌面端
 ## 架构说明
 
 1. **主进程** `main.js` 启动本地服务并打开 `BrowserWindow`，加载 `/_axviewer`。
-2. **本地服务** `axhub-server.js` 提供 `/_api/tree` 目录扫描与 `/_axviewer` 静态服务（与页面同源，避免跨域）。
+2. **本地服务** `axhub-server.js` 提供 `/_api/tree` 目录扫描与 `/_axviewer` 静态服务（与页面同源，避免跨域）。CORS 收紧：默认不放行跨源，仅工作台 UI 路径按需回显 Origin。
 3. **查看器 UI** `viewer/` 是独立 Vue 工程，构建产物 `viewer-dist/` 由 Electron 同源加载——改 UI 只改这里。
-4. **IPC** `preload.js` 提供选择 AxHub 导出目录的能力。
+4. **IPC** `preload.js` 桥接：选择 AxHub 导出目录、更新检查 / 下载进度、关闭行为、用户数据落盘。
+5. **扫描单源** `scan-shared.js`：框架页过滤 / 页面 ID（djb2）/ 分组 / 排序只有一份实现，服务端与浏览器端共用（ID 是用户数据主键，不可漂移）。
 
-## 数据迁移
+## 数据持久化与迁移
 
-- `localStorage` 结构与旧版一致（`wb_axhub_*`），老数据（收藏 / 标签 / 设置）升级后自动继承。
-- 旧单文件 `axhub-viewer.html` 仅作 `viewer-dist` 未构建时的回退，不再维护。
+- 收藏 / 标签 / 重命名 / 最近访问 / 标签页布局 / 分组折叠状态由主进程落盘到 `userData/wb-user-data.json`（防抖 + 原子写）；`localStorage`（`wb_axhub_*`）退化为同源缓存。
+- 旧版数据（纯 localStorage）首次启动自动迁移落盘，无需手工操作；磁盘文件损坏时自动留档 `.corrupt` 并回退缓存数据。
+- 浏览器模式（CLI 起 `axhub-server.js` 后浏览器访问）无 Electron 桥接，行为退回纯 localStorage。
 
 ## 其他交付物
 
