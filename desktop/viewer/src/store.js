@@ -34,7 +34,7 @@ export const store = reactive({
   tabs: load('tabs', []),        // [{id,pid,pinned,title,native,sleep,loading}]
   active: load('active', null),
   settings: Object.assign(
-    { view: 'list', sort: 'name', maxAlive: 8, group: true, collapsed: false, closeAction: '' },
+    { view: 'list', maxAlive: 8, group: true, collapsed: false, closeAction: '' },
     load('settings', {})
   ),
   q: '',
@@ -204,13 +204,9 @@ export const visibleProjects = computed(() => {
     const hay = (p.name + ' ' + p.group + ' ' + (p.tags || []).join(' ')).toLowerCase()
     return q.split(/\s+/).every(w => hay.indexOf(w) >= 0)
   }).sort((a, b) => {
+    // 排序 UI 已移除：固定收藏置顶 + 名称排序
     if ((b.fav ? 1 : 0) !== (a.fav ? 1 : 0)) return (b.fav ? 1 : 0) - (a.fav ? 1 : 0)
-    const s = store.settings.sort
-    if (s === 'name') return a.name.localeCompare(b.name, 'zh')
-    if (s === 'hot') return (b.openCount || 0) - (a.openCount || 0)
-    if (s === 'added') return (a.addedAt || 0) - (b.addedAt || 0)
-    if (s === 'size') return (b.size || 0) - (a.size || 0)
-    return (b.lastOpen || 0) - (a.lastOpen || 0) || a.name.localeCompare(b.name, 'zh')
+    return a.name.localeCompare(b.name, 'zh')
   })
 })
 
@@ -219,9 +215,10 @@ export const sidebarSections = computed(() => {
   const list = visibleProjects.value
   const sections = []
   if (!store.projects.length || !list.length) return sections
-  const recent = load('recent', []).map(getP).filter(p => p && list.indexOf(p) >= 0).slice(0, 6)
+  // 最近访问分组：固定 5 条、常驻展开，不参与全部展开/折叠
+  const recent = load('recent', []).map(getP).filter(p => p && list.indexOf(p) >= 0).slice(0, 5)
   if (recent.length && !store.q.trim() && !store.filterTags.length) {
-    sections.push({ key: '__recent', title: '最近打开', icon: 'clock', items: recent, children: [] })
+    sections.push({ key: '__recent', title: '最近访问', icon: 'clock', items: recent, children: [], fixed: true })
   }
   if (store.settings.group && !store.q.trim() && !store.filterTags.length) {
     buildTree(list).forEach(s => sections.push(s))
@@ -249,11 +246,11 @@ function buildTree (list) {
   return order.map(g => ({ key: 'g_' + g, title: g, icon: g === '未分组' ? 'layers' : 'folder', items: groups[g], children: [], depth: 0 }))
 }
 
-// 收集所有分组（含嵌套）的 key，用于全部折叠/展开
+// 收集所有分组（含嵌套）的 key，用于全部折叠/展开（最近访问分组固定展开，不参与）
 function collectSectionKeys (sections) {
   const out = []
   const walk = arr => arr.forEach(s => {
-    out.push(s.key)
+    if (!s.fixed) out.push(s.key)
     if (s.children && s.children.length) walk(s.children)
   })
   walk(sections)

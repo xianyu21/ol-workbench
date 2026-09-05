@@ -8,13 +8,6 @@
         <div class="seg">
           <button class="on" title="列表视图"><svg-icon name="list" :size="14" /></button>
         </div>
-        <a-select v-model:value="store.settings.sort" class="sort-sel" size="small" @change="persist">
-          <a-select-option value="name">名称 A-Z</a-select-option>
-          <a-select-option value="recent">最近打开</a-select-option>
-          <a-select-option value="hot">打开次数</a-select-option>
-          <a-select-option value="added">扫描顺序</a-select-option>
-          <a-select-option value="size">文件体积</a-select-option>
-        </a-select>
       </div>
       <div class="sb-all">
         <button class="mini" title="展开所有分组" @click="expandAll"><svg-icon name="chev" :size="12" /><span>全部展开</span></button>
@@ -125,13 +118,14 @@ watch(() => store.active, () => {
 <style scoped>
 .sidebar{flex:0 0 var(--sbw);width:var(--sbw);min-width:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;position:relative;z-index:30;transition:flex-basis .2s ease,width .2s ease}
 .sidebar.collapsed{flex-basis:0;width:0;border-right-width:0;overflow:hidden}
-.sidebar.collapsed .resizer,.sidebar.collapsed .sb-toggle{display:none}
+.sidebar.collapsed .resizer{display:none}
+/* 收起后按钮脱离文档流固定在屏幕左缘，保证随时能展开回侧栏 */
+.sidebar.collapsed .sb-toggle{display:grid;position:fixed;left:8px;top:9px;transform:none}
 .sb-top{padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border-2)}
 .sb-row{display:flex;align-items:center;gap:6px}
 .seg{display:flex;background:var(--panel-3);border-radius:var(--r-sm);padding:2px;gap:2px}
 .seg button{height:28px;padding:0 9px;border-radius:5px;font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:5px;cursor:default}
 .seg button.on{background:#fff;color:var(--primary);box-shadow:var(--sh-1)}
-.sort-sel{flex:1 1 auto;min-width:0}
 .sb-all{display:flex;gap:6px}
 .sb-all .mini{display:inline-flex;align-items:center;gap:4px;flex:1 1 0;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
 .sb-all .mini:hover{background:#e8ecf1;color:var(--primary)}
@@ -150,6 +144,6 @@ watch(() => store.active, () => {
 .empty b{color:var(--text-2);display:block;margin-bottom:4px;font-size:13.5px}
 .resizer{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:35}
 .resizer:hover::after{content:'';position:absolute;left:2px;top:0;width:2px;height:100%;background:var(--primary)}
-.sb-toggle{position:absolute;top:9px;left:var(--sbw);transform:translateX(-50%);z-index:50;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text-2);display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-1);transition:left .2s ease}
+.sb-toggle{position:absolute;top:9px;left:calc(var(--sbw) - 13px);z-index:50;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text-2);display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-1);transition:left .2s ease,background .1s}
 .sb-toggle:hover{background:var(--panel-3);color:var(--primary)}
 </style>

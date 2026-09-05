@@ -1,7 +1,7 @@
 <template>
   <div class="sec">
-    <div class="sec-h" :class="{ closed: isClosed }" :style="{ paddingLeft: (8 + node.depth * 14) + 'px' }" @click="toggle">
-      <svg-icon name="chev" :size="13" class="chev" />
+    <div class="sec-h" :class="{ closed: isClosed, fixed: node.fixed }" :style="{ paddingLeft: (8 + node.depth * 14) + 'px' }" @click="toggle">
+      <svg-icon v-if="!node.fixed" name="chev" :size="13" class="chev" />
       <svg-icon :name="node.icon" :size="13" />
       <span class="sec-t">{{ node.title }}</span>
       <span class="cnt">{{ node.items.length }}</span>
@@ -51,13 +51,12 @@ import { ui } from '../ui.js'
 
 const props = defineProps({ node: { type: Object, required: true } })
 
-const isClosed = computed(() => !!store.secClosed[props.node.key])
-function toggle () { store.secClosed[props.node.key] = !store.secClosed[props.node.key]; persist() }
+const isClosed = computed(() => props.node.fixed ? false : !!store.secClosed[props.node.key])
+function toggle () { if (props.node.fixed) return; store.secClosed[props.node.key] = !store.secClosed[props.node.key]; persist() }
 
 const isActive = pid => { const t = tabOf(pid); return t && t.id === store.active }
 const metaOf = p => {
   const m = []
-  if (p.lastOpen) m.push('最近')
   if (p.native) m.push('AxHub 框架')
   return m
 }
@@ -136,6 +135,8 @@ function confirmRemove (p) {
 .sec-h{display:flex;align-items:center;gap:6px;padding:9px 6px 6px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.7px;text-transform:uppercase;user-select:none;cursor:pointer}
 .sec-h .chev{transition:transform .15s;flex:0 0 auto}
 .sec-h.closed .chev{transform:rotate(-90deg)}
+.sec-h.fixed{cursor:default}
+.sec-h.fixed:hover{color:var(--muted)}
 .sec-h .sec-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sec-h .cnt{margin-left:auto;font-weight:600;letter-spacing:0;font-size:11px;background:var(--panel-3);padding:1px 6px;border-radius:9px;text-transform:none}
 .sec-body{min-width:0}
