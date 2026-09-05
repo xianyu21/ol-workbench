@@ -18,7 +18,7 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.16';
+const VERSION = '1.0.18';
 
 // 本机环境两处启动崩溃均已实测定位并验证修复：
 // 1) GPU 进程反复崩溃（0x80000003）连崩 6 次后 Chromium FATAL 退出（"GPU process isn't usable."）
@@ -252,7 +252,20 @@ async function openViewer(d) {
 
   try {
     log('startServer dir=', d);
-    server = await SERVER.startServer(d, { port: 0, open: false });
+    // 优先用固定端口段：随机端口会让浏览器把每次启动当成不同站点，
+    // localStorage（最近访问/标签/收藏）全部丢失。被占用则依次后移，最后回退随机端口
+    let portErr = null;
+    for (const p of [41730, 41731, 41732, 41733, 41734, 41735, 41736, 41737, 41738, 41739, 0]) {
+      try {
+        server = await SERVER.startServer(d, { port: p, open: false });
+        break;
+      } catch (e) {
+        portErr = e;
+        if (e && e.code === 'EADDRINUSE') { log('port', p, 'in use, try next'); continue; }
+        throw e;
+      }
+    }
+    if (!server) throw portErr || new Error('无法启动本地服务');
     const addrInfo = server.address();
     const port = addrInfo.port;
     log('server address info', addrInfo);

@@ -4,11 +4,6 @@
       <a-input v-model:value="store.q" placeholder="搜索页面名 / 模块 (Ctrl+K)" allow-clear ref="qRef">
         <template #prefix><svg-icon name="search" :size="15" /></template>
       </a-input>
-      <div class="sb-row">
-        <div class="seg">
-          <button class="on" title="列表视图"><svg-icon name="list" :size="14" /></button>
-        </div>
-      </div>
       <div class="sb-all">
         <button class="mini" title="展开所有分组" @click="expandAll"><svg-icon name="chev" :size="12" /><span>全部展开</span></button>
         <button class="mini" title="折叠所有分组" @click="collapseAll"><svg-icon name="chev" :size="12" class="up" /><span>全部折叠</span></button>
@@ -38,11 +33,12 @@
     </div>
 
     <div class="resizer" @mousedown="startResize" />
-    <button class="sb-toggle" title="收起 / 展开侧栏 (Ctrl+B)"
-      @click="store.settings.collapsed = !store.settings.collapsed; persist()">
-      <svg-icon :name="store.settings.collapsed ? 'chevR' : 'chevL'" :size="15" />
-    </button>
   </aside>
+  <!-- 展开按钮放在侧栏元素外，收起后也不会被裁剪 -->
+  <button class="sb-toggle" :style="{ left: toggleLeft }" title="收起 / 展开侧栏 (Ctrl+B)"
+    @click="store.settings.collapsed = !store.settings.collapsed; persist()">
+    <svg-icon :name="store.settings.collapsed ? 'chevR' : 'chevL'" :size="15" />
+  </button>
 </template>
 
 <script setup>
@@ -57,6 +53,7 @@ const sections = sidebarSections
 const qRef = ref(null)
 const scrollRef = ref(null)
 const sbw = ref(parseSbw())
+const toggleLeft = computed(() => store.settings.collapsed ? '8px' : (sbw.value - 13) + 'px')
 
 function parseSbw () {
   try { const v = JSON.parse(localStorage.getItem('wb_axhub_sbw')); if (typeof v === 'number') return v } catch (e) {}
@@ -119,13 +116,9 @@ watch(() => store.active, () => {
 .sidebar{flex:0 0 var(--sbw);width:var(--sbw);min-width:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;position:relative;z-index:30;transition:flex-basis .2s ease,width .2s ease}
 .sidebar.collapsed{flex-basis:0;width:0;border-right-width:0;overflow:hidden}
 .sidebar.collapsed .resizer{display:none}
-/* 收起后按钮脱离文档流固定在屏幕左缘，保证随时能展开回侧栏 */
-.sidebar.collapsed .sb-toggle{display:grid;position:fixed;left:8px;top:9px;transform:none}
+.sb-toggle{position:fixed;top:9px;z-index:50;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text-2);display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-1);transition:left .2s ease,background .1s}
+.sb-toggle:hover{background:var(--panel-3);color:var(--primary)}
 .sb-top{padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border-2)}
-.sb-row{display:flex;align-items:center;gap:6px}
-.seg{display:flex;background:var(--panel-3);border-radius:var(--r-sm);padding:2px;gap:2px}
-.seg button{height:28px;padding:0 9px;border-radius:5px;font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:5px;cursor:default}
-.seg button.on{background:#fff;color:var(--primary);box-shadow:var(--sh-1)}
 .sb-all{display:flex;gap:6px}
 .sb-all .mini{display:inline-flex;align-items:center;gap:4px;flex:1 1 0;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
 .sb-all .mini:hover{background:#e8ecf1;color:var(--primary)}
@@ -144,6 +137,5 @@ watch(() => store.active, () => {
 .empty b{color:var(--text-2);display:block;margin-bottom:4px;font-size:13.5px}
 .resizer{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:35}
 .resizer:hover::after{content:'';position:absolute;left:2px;top:0;width:2px;height:100%;background:var(--primary)}
-.sb-toggle{position:absolute;top:9px;left:calc(var(--sbw) - 13px);z-index:50;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text-2);display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-1);transition:left .2s ease,background .1s}
 .sb-toggle:hover{background:var(--panel-3);color:var(--primary)}
 </style>

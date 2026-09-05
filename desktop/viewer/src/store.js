@@ -215,8 +215,8 @@ export const sidebarSections = computed(() => {
   const list = visibleProjects.value
   const sections = []
   if (!store.projects.length || !list.length) return sections
-  // 最近访问分组：固定 5 条、常驻展开，不参与全部展开/折叠
-  const recent = load('recent', []).map(getP).filter(p => p && list.indexOf(p) >= 0).slice(0, 5)
+  // 最近访问分组：固定 5 条、常驻展开，不参与全部展开/折叠（用响应式 store.recent，打开页面即时出现）
+  const recent = store.recent.map(getP).filter(p => p && list.indexOf(p) >= 0).slice(0, 5)
   if (recent.length && !store.q.trim() && !store.filterTags.length) {
     sections.push({ key: '__recent', title: '最近访问', icon: 'clock', items: recent, children: [], fixed: true })
   }
