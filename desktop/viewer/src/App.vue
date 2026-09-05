@@ -75,6 +75,15 @@
           </div>
         </template>
       </a-modal>
+
+      <!-- 更新下载进度（主进程 download-progress → 页面内提示；null = 结束/失败/进入安装） -->
+      <a-modal :open="updatePct !== null" title="正在下载更新" :width="360" :closable="false"
+        :maskClosable="false" :keyboard="false" :footer="null">
+        <div class="upd">
+          <a-progress :percent="updatePct" status="active" />
+          <div class="upd-hint">下载完成后会询问安装，请稍候…</div>
+        </div>
+      </a-modal>
     </div>
   </a-config-provider>
 </template>
@@ -106,6 +115,10 @@ function applyClose (action) {
   closeAsk.value = false
 }
 onMounted(() => { window.axhub?.onCloseActionRequest(() => { closeAsk.value = true }) })
+
+/* ---------- 更新下载进度（主进程 → preload → 页面内进度条） ---------- */
+const updatePct = ref(null)
+onMounted(() => { window.axhub?.onUpdateProgress?.(pct => { updatePct.value = pct }) })
 
 function rescan () {
   message.info('正在重新扫描目录…', 1.5)
@@ -165,4 +178,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .ca-q{font-size:14px;font-weight:600;color:var(--text)}
 .ca-hint{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:2px}
 .ca-btns{display:flex;gap:8px;justify-content:flex-end}
+.upd{padding-top:4px}
+.upd-hint{font-size:12.5px;color:var(--muted);margin-top:6px;text-align:center}
 </style>

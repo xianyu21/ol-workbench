@@ -1,8 +1,8 @@
 <template>
   <a-modal :open="ui.backup" title="恢复备份" :footer="null" :width="520" @cancel="ui.backup = false">
-    <a-alert type="warning" show-icon style="margin-bottom:14px">
+    <a-alert type="info" show-icon style="margin-bottom:14px">
       <template #message>
-        标签、收藏、标签页布局存在浏览器本地（localStorage）。<b>换环境或清缓存会丢</b>，如有旧备份可用下方「导入恢复」迁移。AxHub 文件本身在磁盘不受影响。
+        标签、收藏、标签页布局保存在<b>磁盘</b>（桌面端）或浏览器本地（浏览器端）。桌面端换端口、清缓存、升级版本都不会丢失；如有旧备份可用下方「导入恢复」迁移。AxHub 文件本身在磁盘不受影响。
       </template>
     </a-alert>
     <div style="display:flex;gap:9px;margin-bottom:16px">
@@ -89,6 +89,8 @@ function clearAll () {
     okText: '确认清空', okType: 'danger', cancelText: '取消',
     onOk () {
       Object.keys(localStorage).slice().forEach(k => { if (k.indexOf('wb_axhub_') === 0) localStorage.removeItem(k) })
+      // 桌面端同步清磁盘（否则重启后磁盘快照会把数据灌回来）
+      if (window.axhub && typeof window.axhub.clearUserData === 'function') window.axhub.clearUserData()
       location.reload()
     }
   })

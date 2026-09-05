@@ -87,8 +87,8 @@ async function checkUpdate () {
     lastCheck.value = new Date().toLocaleTimeString()
     if (!r || !r.ok) { message.error(r && r.error || '检查更新失败'); return }
     if (r.available) {
-      // 主进程已弹窗展示更新内容并询问是否下载
-      message.info(`发现新版本 v${r.version}，请在弹窗中确认下载`)
+      // 主进程已弹窗展示更新内容；便携版弹窗提供 Releases 指引
+      message.info(r.portable ? `发现新版本 v${r.version}，便携版请到 Releases 页面重新下载` : `发现新版本 v${r.version}，请在弹窗中确认下载`)
     } else {
       message.success(`已是最新版本（v${appVersion.value}）`)
     }

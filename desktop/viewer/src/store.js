@@ -11,7 +11,30 @@ function load (k, d) {
   try { const v = localStorage.getItem(K + k); return v == null ? d : JSON.parse(v) } catch (e) { return d }
 }
 function saveRaw (k, v) {
-  try { localStorage.setItem(K + k, JSON.stringify(v)); return true } catch (e) { return false }
+  try { localStorage.setItem(K + k, JSON.stringify(v)); return true } catch (e) { return false } finally { scheduleDiskSave() }
+}
+
+/* ---------- 桌面端磁盘持久化 ----------
+ * preload 启动时已把磁盘快照灌入 localStorage（磁盘为事实来源），这里只需在每次
+ * 变更后把全部 wb_axhub_* 键整包回传给主进程防抖落盘。浏览器端无桥接，退回纯
+ * localStorage 行为。防抖合并高频小写（拖侧栏宽度、连续开关分组等）。 */
+let diskSaveTimer = null
+function scheduleDiskSave () {
+  if (!window.axhub || typeof window.axhub.saveUserData !== 'function') return
+  if (diskSaveTimer) return
+  diskSaveTimer = setTimeout(() => {
+    diskSaveTimer = null
+    try {
+      const snap = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.indexOf(K) === 0) {
+          try { snap[k] = JSON.parse(localStorage.getItem(k)) } catch (e) { snap[k] = localStorage.getItem(k) }
+        }
+      }
+      window.axhub.saveUserData(snap)
+    } catch (e) { /* 快照失败不影响运行 */ }
+  }, 300)
 }
 
 export const PALETTE = ['#1296db', '#16a34a', '#f97316', '#e5484d', '#8b5cf6', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ca8a04']
@@ -52,7 +75,6 @@ export function persist () {
   saveRaw('active', store.active)
   saveRaw('settings', store.settings)
 }
-
 /* ---------- 工具 ---------- */
 export function fmtSize (b) {
   if (!b) return ''
@@ -125,8 +147,8 @@ function mergeTree (data) {
       openCount: l.openCount || 0, lastOpen: l.lastOpen || 0, addedAt: l.addedAt || Date.now()
     }
   })
-  // 清理已不存在页面的标签页引用
-  store.tabs = store.tabs.filter(t => store.projects.some(p => p.id === t.pid))
+  // 清理已不存在页面的标签页引用（原生导航标签不来自 projects，保留）
+  store.tabs = store.tabs.filter(t => t.pid === NATIVE_ID || store.projects.some(p => p.id === t.pid))
   if (store.active && !store.tabs.some(t => t.id === store.active)) store.active = store.tabs.length ? store.tabs[0].id : null
   persist()
 }
@@ -152,6 +174,7 @@ export function openProject (pid, forceNew) {
   let tab
   if (!forceNew && cur && !cur.pinned) {
     cur.pid = pid; cur.title = p.name; cur.native = !!p.native; cur.sleep = false; cur.loading = true
+    delete cur.src // 浏览器式替换：iframe 按新 pid 重新加载
     tab = cur
     store.active = cur.id
   } else {
@@ -168,7 +191,7 @@ export function setActive (id) {
   if (store.active === id) return
   store.active = id
   const t = store.tabs.filter(x => x.id === id)[0]
-  if (t && t.sleep) t.sleep = false      // 唤醒由 ViewerPane 监听处理（重建 iframe）
+  if (t && t.sleep) { t.sleep = false; t.loading = true } // 唤醒：重建 iframe（ViewerPane 渲染）
   persist()
 }
 
@@ -295,31 +318,25 @@ export function renameProject (id, name) {
  * 电子端：window.axhub.selectDir() 调主进程系统对话框，选完主进程会 reload 整页
  *         （openViewer -> loadURL），重载后 onMounted 重新 fetchTree，rootDir 自动展示。
  * 浏览器端：File System Access API（localhost/https 安全上下文可用），前端扫描目录，
- *         无需后端即可加载真实 AxHub 导出。 */
-const FRAME_FILES = new Set(['index.html', 'start.html', 'start_c_1.html', 'start_with_pages.html', '通用组件.html', 'start_with_pages (1).html'])
+ *         无需后端即可加载真实 AxHub 导出。扫描纯逻辑与服务端单源（scan-shared.js，
+ *         vite build 将同一份文件内联进本 bundle），页面 ID 算法两端逐字节一致。 */
+import AxHubScan from '../../scan-shared.js'
 
 export async function scanDirHandle (dirHandle) {
   const pages = []
   for await (const [name, handle] of dirHandle.entries()) {
     if (handle.kind !== 'file') continue
     if (!/\.html?$/i.test(name)) continue
-    const low = name.toLowerCase()
-    if (FRAME_FILES.has(low)) continue
-    if (/^start[^.]*\.html?$/i.test(name)) continue
-    if (low === '通用组件.html') continue
+    if (AxHubScan.isFrameFile(name)) continue
     let file
     try { file = await handle.getFile() } catch (e) { continue }
-    const base = name.replace(/\.html?$/i, '')
-    const seg = base.split('-')
-    const group = seg.length > 1 ? seg[0] : '未分组'
-    let h = 5381
-    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0
+    const base = AxHubScan.baseNameOf(name)
     pages.push({
-      id: 'p' + h.toString(36) + '_' + name.length.toString(36),
-      name: base, path: name, size: file.size, group, mtime: file.lastModified
+      id: AxHubScan.computePageId(name),
+      name: base, path: name, size: file.size, group: AxHubScan.groupOf(base), mtime: file.lastModified
     })
   }
-  pages.sort((a, b) => a.path.localeCompare(b.path, 'zh'))
+  AxHubScan.sortPages(pages)
   return pages
 }
 

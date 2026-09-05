@@ -65,7 +65,7 @@ function showTabMenu (e, t) {
 
 function reloadById (id) {
   const t = store.tabs.filter(x => x.id === id)[0]
-  if (t) { t.rc = (t.rc || 0) + 1; t.loading = true }   // ViewerPane 以 :key 含 rc 重建 iframe
+  if (t) { t.rc = (t.rc || 0) + 1; t.loading = true; delete t.src }   // ViewerPane 以 :key 含 rc 重建 iframe，按当前 pid 重新加载
 }
 function reloadActive () {
   const t = activeTab.value

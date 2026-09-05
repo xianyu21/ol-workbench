@@ -34,7 +34,7 @@
           <div class="path">{{ srcOf(getP(t.pid) || {}) }}</div>
         </div>
       </div>
-      <iframe :src="srcOf(getP(t.pid) || {})" :title="titleOf(t)" allowfullscreen
+      <iframe :src="frameSrc(t)" :title="titleOf(t)" allowfullscreen
         @load="onFrameLoad($event, t)" />
     </div>
 
@@ -50,11 +50,15 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, watch, onMounted } from 'vue'
 import SvgIcon from './SvgIcon.vue'
-import { store, getP, srcOf, openProject, activeTab } from '../store.js'
+import { store, getP, srcOf, openProject, activeTab, bump, persist } from '../store.js'
 
 const titleOf = t => { const p = getP(t.pid); return (p && p.name) || t.title }
+
+/* iframe 实际加载地址：优先用 t.src 快照（iframe 自导航重指向标签时保持快照不变，
+ * 避免 src 属性变化触发二次加载），常规创建/唤醒/刷新时为空 → 回退到当前 pid 计算值 */
+function frameSrc (t) { return t.src || srcOf(getP(t.pid) || {}) }
 
 /* LRU：仅渲染未休眠 tab 的 iframe；超 maxAlive 释放最久未用的未固定标签 */
 const aliveTabs = computed(() => store.tabs.filter(t => !t.sleep))
@@ -71,7 +75,31 @@ function onFrameLoad (e, t) {
   try {
     const doc = e.target.contentDocument
     if (doc && doc.querySelectorAll) bindFrameLinks(e.target, doc)
+    syncSelfNav(e.target, t)
   } catch (err) { /* 跨域等场景忽略 */ }
+}
+
+/* iframe 自行跳转（Axure 式 JS location 跳转 / meta refresh / 表单）：
+ * load 后比对当前文档地址，命中已收录页面则把标签重指向新页（含 openCount/最近访问），
+ * 但不改 src 快照 → iframe 不重载，标签栏/侧栏联动照常 */
+function syncSelfNav (f, t) {
+  let from, now
+  try { from = new URL(f.src || location.href) } catch (e) { return }
+  try { now = new URL(f.contentWindow.location.href) } catch (e) { return }
+  if (now.origin !== location.origin) return
+  if (from.pathname === now.pathname && from.search === now.search) return
+  for (const p of store.projects) {
+    let pu
+    try { pu = new URL(srcOf(p), location.href) } catch (err) { continue }
+    if (pu.pathname === now.pathname && pu.search === now.search) {
+      t.pid = p.id
+      t.title = p.name
+      t.native = !!p.native
+      bump(p)
+      persist()
+      break
+    }
+  }
 }
 
 /* 需求2：拦截 iframe 内同源链接，命中其他页面则在本 tab 内切换并同步 tab 栏 */
@@ -110,6 +138,7 @@ function applyLru () {
   for (const t of candidates) {
     if (over <= 0) break
     t.sleep = true
+    delete t.src // 休眠即销毁 iframe，唤醒时按当前 pid 重新加载
     over--
   }
 }
@@ -121,6 +150,20 @@ watch(() => store.tabs.map(t => t.id + (t.sleep ? 's' : '')).join(','), () => {
 })
 
 function wake (t) { t.sleep = false; t.loading = true; t.lastActive = Date.now() }
+
+/* 会话恢复懒加载：启动时恢复的标签只保留激活项立即加载（只发起 1 个页面请求），
+ * 其余进入休眠，首次点击唤醒。仅本组件挂载时执行一次，不影响会话中新开的标签。 */
+onMounted(() => {
+  let changed = false
+  for (const t of store.tabs) {
+    if (!t.sleep && t.id !== store.active) { t.sleep = true; delete t.src; changed = true }
+  }
+  if (changed) persist()
+})
+
+/* 安全网：激活标签不应处于休眠态（LRU 不会休眠激活项；若磁盘恢复/异步合并竞态导致，
+ * 立即自动唤醒，避免用户面对"已休眠"页还要手动点重新加载） */
+watch(activeTab, t => { if (t && t.sleep) wake(t) }, { immediate: true })
 </script>
 
 <style scoped>
