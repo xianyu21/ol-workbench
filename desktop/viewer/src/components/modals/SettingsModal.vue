@@ -26,6 +26,17 @@
     </div>
     <div class="rowsp" style="margin-top:10px">
       <div>
+        <b>点击关闭按钮时</b>
+        <div class="hint">选后台运行会最小化到系统托盘，可从托盘退出</div>
+      </div>
+      <a-radio-group v-model:value="st.closeAction" size="small" @change="saveClose">
+        <a-radio-button value="">每次询问</a-radio-button>
+        <a-radio-button value="background">后台运行</a-radio-button>
+        <a-radio-button value="exit">直接退出</a-radio-button>
+      </a-radio-group>
+    </div>
+    <div class="rowsp">
+      <div>
         <b>版本与更新</b>
         <div class="hint">当前版本 v{{ appVersion }}<template v-if="lastCheck"> · 上次检查 {{ lastCheck }}</template></div>
       </div>
@@ -87,6 +98,11 @@ async function checkUpdate () {
 }
 
 function chooseDir () { selectDirectory() }
+function saveClose () {
+  persist()
+  window.axhub?.saveCloseAction(st.closeAction || '')
+  message.info(st.closeAction === 'background' ? '以后点击关闭将最小化到托盘' : st.closeAction === 'exit' ? '以后点击关闭将直接退出' : '以后点击关闭会再次询问')
+}
 function ok () {
   st.maxAlive = Math.max(2, Math.min(24, +st.maxAlive || 8))
   persist()

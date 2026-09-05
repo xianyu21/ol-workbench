@@ -34,7 +34,7 @@ export const store = reactive({
   tabs: load('tabs', []),        // [{id,pid,pinned,title,native,sleep,loading}]
   active: load('active', null),
   settings: Object.assign(
-    { view: 'list', sort: 'name', maxAlive: 8, group: true, collapsed: false },
+    { view: 'list', sort: 'name', maxAlive: 8, group: true, collapsed: false, closeAction: '' },
     load('settings', {})
   ),
   q: '',

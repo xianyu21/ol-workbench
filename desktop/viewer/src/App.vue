@@ -55,12 +55,32 @@
       <TagManageModal />
       <BackupModal />
       <SettingsModal />
+
+      <!-- 关闭行为询问（Electron 点 X 且未记住选择时） -->
+      <a-modal :open="closeAsk" title="关闭 AxHub 原型工作台" :width="420" :closable="true"
+        :maskClosable="true" @cancel="closeAsk = false">
+        <div class="close-ask">
+          <div class="ca-q">要在后台继续运行，还是直接退出？</div>
+          <div class="ca-hint">后台运行将最小化到系统托盘，可随时从托盘重新打开。</div>
+          <a-checkbox v-model:checked="closeRemember">记住我的选择，以后不再询问</a-checkbox>
+        </div>
+        <template #footer>
+          <div class="ca-btns">
+            <a-button type="primary" @click="applyClose('background')">
+              <template #icon><svg-icon name="layers" :size="14" /></template>
+              后台运行
+            </a-button>
+            <a-button danger @click="applyClose('exit')">直接退出</a-button>
+            <a-button @click="closeAsk = false">取消</a-button>
+          </div>
+        </template>
+      </a-modal>
     </div>
   </a-config-provider>
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { message } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import SvgIcon from './components/SvgIcon.vue'
@@ -77,6 +97,15 @@ import { store, persist, fetchTree, openProject, setActive, closeTab, togglePin,
 import { ui } from './ui.js'
 
 const theme = { token: { colorPrimary: '#1296db', colorInfo: '#1296db', borderRadius: 7, fontFamily: 'var(--font)' } }
+
+/* ---------- 关闭行为询问（主进程 → preload → 此处弹 antd Modal） ---------- */
+const closeAsk = ref(false)
+const closeRemember = ref(false)
+function applyClose (action) {
+  window.axhub?.applyCloseAction(action, closeRemember.value)
+  closeAsk.value = false
+}
+onMounted(() => { window.axhub?.onCloseActionRequest(() => { closeAsk.value = true }) })
 
 function rescan () {
   message.info('正在重新扫描目录…', 1.5)
@@ -132,4 +161,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .main{flex:1 1 auto;display:flex;min-height:0;position:relative}
 .content{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
 @media(max-width:860px){.hd-lbl{display:none}}
+.close-ask{display:flex;flex-direction:column;gap:10px;padding-top:2px}
+.ca-q{font-size:14px;font-weight:600;color:var(--text)}
+.ca-hint{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:2px}
+.ca-btns{display:flex;gap:8px;justify-content:flex-end}
 </style>

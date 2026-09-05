@@ -12,13 +12,13 @@
  * HTTP 版已按用户要求移除（仅保留 AxHub-HTTP-Server.zip 交付）；
  * 服务（axhub-server.js）复用本地 HTTP 服务，工作台 UI 为 Vue 构建产物 viewer-dist，均为 desktop/ 桌面端自有文件。
  */
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-const VERSION = '1.0.13';
+const VERSION = '1.0.15';
 
 // 本机环境两处启动崩溃均已实测定位并验证修复：
 // 1) GPU 进程反复崩溃（0x80000003）连崩 6 次后 Chromium FATAL 退出（"GPU process isn't usable."）
@@ -76,6 +76,7 @@ function setupAutoUpdater() {
   autoUpdater.on('update-downloaded', async () => {
     if (win) win.setTitle('AxHub 原型工作台');
     log('update downloaded, quitAndInstall');
+    quitting = true; // 放行窗口 close，避免被关闭询问拦截
     try { await autoUpdater.quitAndInstall(false, true); } catch (e) { log('install error:', e && e.message); }
   });
 
@@ -133,14 +134,83 @@ log('config=', CONFIG);
 let win = null;
 let server = null;
 let savedDir = loadDir();
+let tray = null;
+let quitting = false; // 真正退出（托盘退出/更新安装）时置 true，放行 close
 
-function loadDir() {
-  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')).dir || null; }
-  catch (e) { return null; }
+function loadConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')) || {}; }
+  catch (e) { return {}; }
 }
-function saveDir(d) {
-  try { fs.writeFileSync(CONFIG, JSON.stringify({ dir: d }, null, 2)); } catch (e) { /* ignore */ }
+function saveConfig(patch) {
+  try {
+    const cfg = Object.assign(loadConfig(), patch);
+    fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2));
+  } catch (e) { /* ignore */ }
 }
+function loadDir() { return loadConfig().dir || null; }
+function saveDir(d) { saveConfig({ dir: d }); }
+
+// ---------- 托盘（后台运行） ----------
+function trayIconPath() {
+  const dev = path.join(__dirname, 'build', 'icon.ico');
+  if (fs.existsSync(dev)) return dev;
+  return path.join(process.resourcesPath, 'build', 'icon.ico');
+}
+function ensureTray() {
+  if (tray) return tray;
+  try {
+    const img = nativeImage.createFromPath(trayIconPath());
+    tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
+    tray.setToolTip('AxHub 原型工作台（后台运行中）');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '打开工作台', click: () => showMainWindow() },
+      { type: 'separator' },
+      { label: '退出', click: () => { quitting = true; app.quit(); } }
+    ]));
+    tray.on('double-click', () => showMainWindow());
+    return tray;
+  } catch (e) { log('tray create error:', e && e.message); return null; }
+}
+function showMainWindow() {
+  if (!win) { openViewer(savedDir); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// ---------- 关闭行为：询问后台运行还是直接退出，可记住选择 ----------
+// 优先由页面弹 antd Modal（样式统一）；页面未就绪时回退系统对话框
+function handleClose(w, e) {
+  if (quitting) return; // 放行真正退出
+  const action = loadConfig().closeAction; // 'background' | 'exit' | undefined(每次问)
+  if (action === 'background') { e.preventDefault(); w.hide(); ensureTray(); return; }
+  if (action === 'exit') return; // 直接退出
+  e.preventDefault();
+  if (w.webContents && !w.webContents.isDestroyed() && !w.webContents.isLoading()) {
+    w.webContents.send('close:ask');
+  } else {
+    nativeAskClose(w);
+  }
+}
+function nativeAskClose(w) {
+  dialog.showMessageBox(w, {
+    type: 'question', title: '关闭 AxHub 原型工作台',
+    message: '要在后台继续运行，还是直接退出？',
+    detail: '后台运行将最小化到系统托盘，可随时从托盘重新打开。',
+    buttons: ['后台运行', '直接退出', '取消'], defaultId: 0, cancelId: 2
+  }).then(r => {
+    if (r.response === 2) return;
+    if (r.response === 0) { w.hide(); ensureTray(); } else { quitting = true; app.quit(); }
+  });
+}
+ipcMain.on('close:apply', (e, action, remember) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (!w) return;
+  if (remember) saveConfig({ closeAction: action });
+  if (action === 'background') { w.hide(); ensureTray(); } else { quitting = true; app.quit(); }
+});
+// 设置页改关闭行为：仅保存，不触发动作（'' = 每次询问）
+ipcMain.on('close:save', (e, action) => saveConfig({ closeAction: action || '' }));
 
 function createWindow() {
   const w = new BrowserWindow({
@@ -151,6 +221,7 @@ function createWindow() {
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, webSecurity: false }
   });
   w.once('ready-to-show', () => w.show());
+  w.on('close', (e) => handleClose(w, e));
   w.on('closed', () => { win = null; });
   return w;
 }
@@ -276,7 +347,7 @@ ipcMain.handle('update:check', async () => {
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); }
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+  app.on('second-instance', () => showMainWindow());
   app.whenReady().then(async () => {
     log('app ready');
     setupAutoUpdater();
@@ -292,5 +363,7 @@ else {
     }
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // 更新安装/托盘退出走 app.quit() → before-quit 放行窗口 close
+  app.on('before-quit', () => { quitting = true; });
   app.on('window-all-closed', () => { if (server) { try { server.close(); } catch (e) {} } if (process.platform !== 'darwin') app.quit(); });
 }
