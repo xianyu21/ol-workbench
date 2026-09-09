@@ -106,7 +106,8 @@ function fileResponse (method, full, status, allowOrigin, root) {
   const total = st.size;
   const type = mimeOf(full);
   // Axure 导出的资源目录内容基本不变，可长缓存 immutable；HTML/JSON 保持 1 小时以便重新导出后生效
-  const seg0 = path.relative(root, full).split(path.sep)[0];
+  // root 为 null（/_axviewer 资源在未选目录时也可访问）时跳过相对段判断
+  const seg0 = root ? path.relative(root, full).split(path.sep)[0] : '';
   const ext = path.extname(full).toLowerCase();
   const immutableExt = new Set(['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.mp4', '.webm', '.mp3', '.wav']);
   const immutableDir = new Set(['resources', 'images', 'files', 'data', 'css', 'js', 'styles', 'scripts', 'fonts']);
@@ -150,7 +151,8 @@ function handleRequest (opts) {
   const headers = opts.headers || {};
   const plain = (status, text, type) => ({ status, headers: type ? { 'Content-Type': type } : {}, body: text, stream: null });
 
-  if (!root) return plain(503, 'AxHub 导出目录未就绪', 'text/plain; charset=utf-8');
+  // 注意：root 未就绪只阻断「导出目录静态服务」，工作台 UI（/_axviewer）与 _api 必须照常可用——
+  // 首次启动/未选目录时窗口加载的就是 /_axviewer/ 空态工作台（mac 首启动黑屏白字即此处曾误拦）。
   // urlPath 允许畸形的百分号编码：与旧版一致，交由适配层兜底成 500
   let p = decodeURIComponent(opts.urlPath || '/');
   if (p === '/') p = '/index.html';
@@ -172,9 +174,14 @@ function handleRequest (opts) {
   }
   if (p === '/_api/tree' || p === '/_api/tree/') {
     // 不带 CORS 头：页面清单含本地目录信息，禁止任意网页跨源读取
-    return plain(200, JSON.stringify(scanAxHub(root)), 'application/json; charset=utf-8');
+    // 未选目录（root=null）返回空清单，与 main.js IPC tree:get 的空态结构一致
+    const data = root ? scanAxHub(root) : { name: '', root: null, entry: null, hasData: false, pages: [] };
+    return plain(200, JSON.stringify(data), 'application/json; charset=utf-8');
   }
   if (p === '/_api/ping') return plain(200, 'ok', 'text/plain');
+
+  // ---- 以下为导出目录静态服务，root 未就绪才兜底 503 ----
+  if (!root) return plain(503, 'AxHub 导出目录未就绪（尚未选择导出目录）', 'text/plain; charset=utf-8');
 
   // 静态服务根目录
   const full = safeJoin(root, p);

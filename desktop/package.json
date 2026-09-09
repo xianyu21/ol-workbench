@@ -1,6 +1,6 @@
 {
   "name": "axhub-desktop",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "AxHub 原型工作台 · 桌面端（Electron 壳，serve-core 挂 axhub:// 协议，零端口零依赖）",
   "main": "main.js",
   "author": "AxHub Viewer",

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.29 · 2026-09-09
+
+- 🐛 **修复 macOS 首启动黑屏白字（"AxHub 导出目录未就绪"）**：serve-core 把 root 未就绪检查放在了 `/_axviewer` 虚拟路由之前，导致首次启动/未选目录/移除目录后，空态工作台整个加载不出来，窗口只剩一行 503 文本。现工作台 UI 与 `_api` 不再依赖导出目录，仅导出目录静态服务在未选目录时兜底 503；`/_api/tree` 未选目录时返回空清单（与 IPC 空态结构一致）
+- ✅ serve-core 测试补 null-root 空态用例（13+9 项全过）
+
 ## v1.0.28 · 2026-09-09
 
 - 🐛 修复 macOS 发布资产名：productName 含中文导致上传截断（v1.0.27 资产变 `AxHub.-1.0.27.dmg`）；build.mac 显式 `artifactName: AxHub-mac-${version}`，dmg/zip 均为纯 ASCII 文件名

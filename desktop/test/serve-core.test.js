@@ -101,7 +101,21 @@ test('_api/tree 无 CORS 头，结构含 pages/hasData/entry', () => {
   assert.ok(data.pages.length > 0);
 });
 
-test('未设 root 时返回 503（协议层在未选目录前的兜底）', () => {
+test('未设 root：导出目录静态服务返回 503（协议层在未选目录前的兜底）', () => {
   const r = core.handleRequest({ root: null, method: 'GET', urlPath: '/' });
   assert.strictEqual(r.status, 503);
+});
+
+test('未设 root：工作台 UI 与 _api 照常可用（首启动空态不黑屏）', () => {
+  const idx = core.handleRequest({ root: null, method: 'GET', urlPath: '/_axviewer/' });
+  assert.strictEqual(idx.status, 200);
+  assert.match(idx.headers['Content-Type'], /text\/html/);
+  // 工作台静态资源可访问（取 viewer-dist 内任一真实文件：index.html 引用的 assets）
+  const res = core.handleRequest({ root: null, method: 'GET', urlPath: '/_axviewer/favicon.svg' });
+  assert.ok([200, 404].includes(res.status), '资源请求应进入文件逻辑而非 503');
+  const tree = core.handleRequest({ root: null, method: 'GET', urlPath: '/_api/tree' });
+  assert.strictEqual(tree.status, 200);
+  const data = JSON.parse(tree.body);
+  assert.strictEqual(data.hasData, false);
+  assert.deepStrictEqual(data.pages, []);
 });
