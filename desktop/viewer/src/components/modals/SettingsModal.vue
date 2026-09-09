@@ -7,10 +7,16 @@
         <div class="hint">当前加载的原型导出根目录</div>
         <div class="dirpath" :title="store.rootDir">{{ store.rootDir || '未选择目录' }}</div>
       </div>
-      <a-button type="primary" ghost @click="chooseDir">
-        <template #icon><svg-icon name="folder" :size="14" /></template>
-        选择目录
-      </a-button>
+      <div class="diractions">
+        <a-button type="primary" ghost @click="chooseDir">
+          <template #icon><svg-icon name="folder" :size="14" /></template>
+          选择目录
+        </a-button>
+        <a-button v-if="store.rootDir" danger ghost @click="removeDir">
+          <template #icon><svg-icon name="trash" :size="14" /></template>
+          移除目录
+        </a-button>
+      </div>
     </div>
     <div class="rowsp">
       <div>
@@ -64,9 +70,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { Modal, message } from 'ant-design-vue'
 import { store, persist, selectDirectory } from '../../store.js'
 import { ui } from '../../ui.js'
+import * as userData from '../../user-data.js'
 import SvgIcon from '../SvgIcon.vue'
 
 const st = store.settings
@@ -98,6 +105,24 @@ async function checkUpdate () {
 }
 
 function chooseDir () { selectDirectory() }
+
+/* 移除当前关联的 AxHub 目录：清工作台记录 + 解绑目录（不删磁盘文件），重载回空态后弹添加引导 */
+function removeDir () {
+  const dir = store.rootDir
+  Modal.confirm({
+    title: '移除 AxHub 目录',
+    content: `解除与目录「${dir}」的关联，并清空本地页面列表、收藏、标签与标签页布局记录。\n\n磁盘上的 AxHub 文件不会被删除；之后每次打开应用都会提示重新添加目录。`,
+    okText: '移除目录', okType: 'danger', cancelText: '取消',
+    async onOk () {
+      ui.settings = false
+      userData.clear() // 先清本地记录（localStorage + 磁盘快照），再解绑目录并重载
+      try {
+        if (window.axhub?.clearDir) { await window.axhub.clearDir(); return }
+      } catch (e) { /* 主进程失败则退回页面重载 */ }
+      location.reload()
+    }
+  })
+}
 function saveClose () {
   persist()
   window.axhub?.saveCloseAction(st.closeAction || '')
@@ -114,6 +139,7 @@ function ok () {
 <style scoped>
 .rowsp{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-2)}
 .dirblock{padding-top:2px}
+.diractions{display:flex;gap:8px;flex:0 0 auto}
 .dirinfo{display:flex;flex-direction:column;gap:3px;min-width:0}
 .dirpath{font-size:12px;color:var(--primary-2);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-top:2px}
 .rowsp b{font-size:13px;font-weight:600}

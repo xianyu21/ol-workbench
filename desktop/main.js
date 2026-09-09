@@ -1,23 +1,66 @@
 'use strict';
 /*
- * AxHub 原型工作台 · 桌面端主进程（Electron） v1.0.1
+ * AxHub 原型工作台 · 桌面端主进程（Electron） v1.1.0
  * --------------------------------------------------------------
- * 复用本地服务（桌面端自有副本）：require('./axhub-server.js').startServer(dir)
- * 在本进程内起一个零依赖 http 服务（根目录 = AxHub 导出目录），
- * 再用 BrowserWindow 打开 http://localhost:<port>/_axviewer。
+ * 自 v1.1.0 起桌面端不再内嵌 HTTP 服务（不监听任何端口）：axhub-server.js 的
+ * 路由/静态服务逻辑抽到了宿主无关的 serve-core.js，本进程把 serve-core 挂到
+ * 自定义协议 axhub:// 上（standard + secure + supportFetchAPI + stream），
+ * BrowserWindow 直接打开 axhub://local/_axviewer/。
+ * viewer 与原型页同在 axhub://local 一个 origin 下，iframe 同源联动、相对路径、
+ * Range 媒体播放与原 HTTP 版行为一致；页面清单经 IPC（tree:get）获取。
  *
  * 首次启动（或未记住目录）显示 picker.html 让用户选择 AxHub 导出目录；
  * 选择后写入 userData/axhub-desktop.json，下次直接进工作台。
- *
- * HTTP 版已按用户要求移除（仅保留 AxHub-HTTP-Server.zip 交付）；
- * 服务（axhub-server.js）复用本地 HTTP 服务，工作台 UI 为 Vue 构建产物 viewer-dist，均为 desktop/ 桌面端自有文件。
  */
-const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, shell, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const userStore = require('./user-store.js');
+const core = require('./serve-core.js');
+
+// ---------- axhub:// 自定义协议 ----------
+// 必须在 app ready 之前注册特权 scheme；standard+secure 使相对路径/同源判断/
+// localStorage 与 https 站点语义一致，supportFetchAPI 供 Axure 页内 XHR/fetch 使用。
+const AXHUB_SCHEME = 'axhub';
+const AXHUB_ORIGIN = 'axhub://local'; // 固定 origin：与端口彻底解耦，localStorage 永不漂移
+protocol.registerSchemesAsPrivileged([{
+  scheme: AXHUB_SCHEME,
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+}]);
+
+// serve-core 描述符 → web Response 的薄适配
+function registerAxhubProtocol () {
+  protocol.handle(AXHUB_SCHEME, async (req) => {
+    try {
+      const u = new URL(req.url);
+      const headers = {};
+      for (const [k, v] of req.headers.entries()) headers[k.toLowerCase()] = v;
+      const r = core.handleRequest({ root: core.getRoot(), method: req.method, urlPath: u.pathname, headers });
+      const init = { status: r.status, headers: r.headers };
+      if (r.file) {
+        // 无 Range 的静态文件：net.fetch(file://) 返回协议层可正确消费的 web 流
+        // （Readable.toWeb(fs.createReadStream) 实测经协议层后 body 为空，不可用）
+        try {
+          const fres = await net.fetch(pathToFileURL(r.file).toString());
+          init.body = fres.body;
+        } catch (e) {
+          log('axhub stream fallback to buffer:', r.file, e && e.message);
+          init.body = await fs.promises.readFile(r.file);
+        }
+      } else if (r.body !== null && r.body !== undefined) {
+        init.body = r.body;
+      }
+      return new Response(init.body ?? null, init);
+    } catch (err) {
+      log('axhub protocol error:', err && err.message);
+      return new Response('Internal Server Error: ' + (err && err.message || String(err)), {
+        status: 500, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+  });
+}
 
 // 版本号单源：读自 package.json（electron-builder 同源），发版只改一处
 const VERSION = app.getVersion();
@@ -137,26 +180,6 @@ function log(...args) {
   console.log(line);
 }
 
-// 服务为桌面端自有文件（同目录副本）；打包后 extraResources 同时把副本放入 resources 目录，二者都兼容。
-let SERVER = null;
-let SERVER_LOAD_ERROR = null;
-try {
-  const devPath = path.join(__dirname, 'axhub-server.js');
-  log('try load server from', devPath);
-  SERVER = require(devPath);
-  log('server loaded (dev):', devPath);
-} catch (e) {
-  SERVER_LOAD_ERROR = e;
-  try {
-    const prodPath = path.join(process.resourcesPath, 'axhub-server.js');
-    log('dev load failed, try prod path:', prodPath, 'error:', e.message);
-    SERVER = require(prodPath);
-    log('server loaded (prod):', prodPath);
-  } catch (e2) {
-    log('FATAL: cannot load axhub-server.js from dev or prod path:', e2.message);
-  }
-}
-
 const PRELOAD = path.join(__dirname, 'preload.js');
 const CONFIG = path.join(app.getPath('userData'), 'axhub-desktop.json');
 userStore.init(app.getPath('userData')); // 用户核心数据落盘（收藏/标签/最近访问/标签页布局）
@@ -168,7 +191,6 @@ log('preload=', PRELOAD);
 log('config=', CONFIG);
 
 let win = null;
-let server = null;
 let savedDir = loadDir();
 let tray = null;
 let quitting = false; // 真正退出（托盘退出/更新安装）时置 true，放行 close
@@ -260,8 +282,8 @@ function createWindow() {
     backgroundColor: '#f4efe6',
     show: false,
     title: 'AxHub 原型工作台',
-    // webSecurity 保持默认开启：工作台与原型页均由本地服务同源服务，无需关闭。
-    // 若个别导出确需跨域，由服务端精确放行（见 axhub-server.js 的 CORS 策略），不走全局关闭。
+    // webSecurity 保持默认开启：工作台与原型页同在 axhub://local 一个 origin 下，无需关闭。
+    // 若个别导出确需跨域，由 serve-core 精确放行（/_axviewer 资源按需回显 Origin），不走全局关闭。
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false }
   });
   w.once('ready-to-show', () => w.show());
@@ -270,97 +292,38 @@ function createWindow() {
   return w;
 }
 
-function httpPing(port, pathname) {
-  return new Promise((resolve, reject) => {
-    const req = http.get({ host: '127.0.0.1', port, path: pathname, timeout: 3000 }, (res) => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => resolve({ status: res.statusCode, body: body.slice(0, 200) }));
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('ping timeout')); });
-  });
-}
-
-async function openViewer(d) {
+async function openViewer (d) {
   const w = win || createWindow();
   win = w;
   savedDir = d; saveDir(d);
-  if (server) { try { server.close(); } catch (e) { log('close old server error:', e.message); } server = null; }
 
-  if (!SERVER || !SERVER.startServer) {
-    log('FATAL: SERVER module invalid', SERVER);
-    dialog.showErrorBox('无法启动本地服务', '未找到本地服务模块 axhub-server.js。详情请查看日志：\n' + LOG_FILE);
-    return;
+  // serve-core 挂上当前导出目录，并先做一次可读性校验（代替旧 HTTP 预检）
+  core.setRoot(d);
+  if (d) {
+    const scan = core.scanAxHub(d);
+    if (scan.error) {
+      log('openViewer: scan error:', scan.error);
+      dialog.showErrorBox('无法读取 AxHub 导出目录', scan.error + '\n\n目录：\n' + d + '\n\n日志路径：\n' + LOG_FILE);
+      return;
+    }
+    log('scan ok, pages =', scan.pages.length);
+  } else {
+    log('no dir: open empty workspace');
   }
 
+  // 强制当前窗口 session 直连，不经过系统代理/VPN（页面内的外链资源也保持直连）
+  try { await w.webContents.session.setProxy({ proxyRules: 'direct://' }); } catch (e) { log('setProxy error:', e && e.message); }
+
+  // 固定 origin（AXHUB_ORIGIN 与端口彻底解耦），localhost 拦截/端口漂移类问题不复存在
+  const target = AXHUB_ORIGIN + '/_axviewer/';
   try {
-    log('startServer dir=', d);
-    // 优先用固定端口段：随机端口会让浏览器把每次启动当成不同站点，
-    // localStorage（最近访问/标签/收藏）全部丢失。被占用则依次后移，最后回退随机端口
-    let portErr = null;
-    for (const p of [41730, 41731, 41732, 41733, 41734, 41735, 41736, 41737, 41738, 41739, 0]) {
-      try {
-        server = await SERVER.startServer(d, { port: p, open: false });
-        break;
-      } catch (e) {
-        portErr = e;
-        if (e && e.code === 'EADDRINUSE') { log('port', p, 'in use, try next'); continue; }
-        throw e;
-      }
-    }
-    if (!server) throw portErr || new Error('无法启动本地服务');
-    const addrInfo = server.address();
-    const port = addrInfo.port;
-    log('server address info', addrInfo);
-
-    // 预检：先请求一次 /_api/ping，确认服务真的可用
-    log('ping /_api/ping ...');
-    const ping = await httpPing(port, '/_api/ping');
-    log('ping result', ping);
-    if (ping.status !== 200) {
-      throw new Error('服务预检失败，状态码 ' + ping.status + ': ' + ping.body);
-    }
-
-    // 再预检工作台首页
-    log('ping /_axviewer/ ...');
-    const idx = await httpPing(port, '/_axviewer/');
-    log('index result', idx);
-    if (idx.status !== 200) {
-      throw new Error('工作台首页访问失败，状态码 ' + idx.status + ': ' + idx.body);
-    }
-
-    // 强制 127.0.0.1（IPv4），避免 localhost 被解析为 IPv6 ::1 导致 Electron 渲染进程连接失败 ERR_FAILED(-2)
-    const url = 'http://127.0.0.1:' + port + '/_axviewer/';
-    log('loadURL', url);
-    // 强制当前窗口 session 直连，不经过系统代理/VPN（否则 127.0.0.1 可能被代理拒绝）
-    await w.webContents.session.setProxy({ proxyRules: 'direct://' });
-    log('proxy set to direct');
-    // 环境里的 VPN/安全软件可能偶发拦截 localhost（Node ping 正常但 Chromium 报 ERR_FAILED(-2)），
-    // 失败后延迟重试，并在最后一次改用 localhost 主机名兜底
-    const target = url;
-    let lastErr = null;
-    for (let i = 1; i <= 4; i++) {
-      const attemptUrl = i === 4 ? target.replace('127.0.0.1', 'localhost') : target;
-      try {
-        if (i > 1) {
-          log('loadURL retry', i, attemptUrl);
-          await new Promise(r => setTimeout(r, 1000));
-          try { await w.webContents.session.setProxy({ proxyRules: 'direct://' }); } catch (e) {}
-        }
-        await w.loadURL(attemptUrl);
-        log('loadURL success');
-        buildMenu();
-        return;
-      } catch (e) {
-        lastErr = e;
-        log('loadURL attempt', i, 'failed:', e && e.message);
-      }
-    }
-    throw lastErr;
+    log('loadURL', target);
+    await w.loadURL(target);
+    log('loadURL success');
+    buildMenu();
   } catch (e) {
-    log('openViewer ERROR:', e && e.message, e && e.stack);
-    dialog.showErrorBox('无法启动本地服务', (e && e.message || String(e)) + '\n\n日志路径：\n' + LOG_FILE);
+    log('loadURL failed:', e && e.message, e && e.stack);
+    dialog.showErrorBox('无法打开工作台', (e && e.message || String(e)) + '\n\n日志路径：\n' + LOG_FILE);
   }
 }
 
@@ -376,6 +339,22 @@ function buildMenu() {
   // 移除默认应用菜单栏（AxHub 原型工作台 / 编辑 / 视图）
   Menu.setApplicationMenu(null);
 }
+
+// ---------- IPC：页面清单（协议层不可被本机其他进程访问，清单只经 IPC 给渲染层） ----------
+// 未关联目录（首次启动 / 已移除）时返回空清单，工作台以空态 + 引导弹窗呈现
+ipcMain.handle('tree:get', () => {
+  const root = core.getRoot();
+  if (!root) return { name: '', root: null, entry: null, hasData: false, pages: [] };
+  return core.scanAxHub(root);
+});
+
+// ---------- IPC：移除 AxHub 目录（只解绑 + 清配置，不删磁盘文件） ----------
+// 渲染层已先清空本地记录（userData.clear()），此处清掉目录绑定后重载为空态工作台
+ipcMain.handle('dir:clear', async () => {
+  log('dir:clear');
+  try { await openViewer(null); } catch (e) { log('dir:clear reload error:', e && e.message); }
+  return true;
+});
 
 // ---------- IPC：启动屏选择目录 ----------
 ipcMain.handle('picker:select', async () => {
@@ -407,6 +386,7 @@ else {
   app.on('second-instance', () => showMainWindow());
   app.whenReady().then(async () => {
     log('app ready');
+    registerAxhubProtocol();
     setupAutoUpdater();
     const w = createWindow();
     win = w;
@@ -414,13 +394,13 @@ else {
       log('has savedDir', savedDir);
       await openViewer(savedDir);
     } else {
-      log('no savedDir, show picker');
-      w.loadFile(path.join(__dirname, 'picker.html'));
-      buildMenu();
+      // 无目录（首次启动 / 目录已被移除）：直接进空态工作台，由页面弹窗引导添加目录
+      log('no savedDir, open empty workspace');
+      await openViewer(null);
     }
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // 更新安装/托盘退出走 app.quit() → before-quit 放行窗口 close，并把待写数据立即落盘
   app.on('before-quit', () => { quitting = true; userStore.flush(); });
-  app.on('window-all-closed', () => { if (server) { try { server.close(); } catch (e) {} } if (process.platform !== 'darwin') app.quit(); });
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 }

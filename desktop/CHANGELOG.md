@@ -2,6 +2,21 @@
 
 ## 未发布 (Unreleased)
 
+### v1.0.21
+- ♻️ 标签页生命周期抽为纯函数 module（viewer/src/tabs.js，零 import）：开/关/钉/LRU 休眠/会话恢复/自导航重指向全部可 node:test 直测；「激活标签永不休眠」invariant 改由构造保证，ViewerPane 安全网 watcher 删除
+- ✨ 用户数据持久化收口为 user-data.js module（get/set/persist/clear 四动词）：key 清单单源 user-keys.js（preload 共用），`wb_axhub_` 前缀不再散落四处；🐛 修复侧栏宽度不落盘、每次启动被重置的 bug
+- ♻️ 备份导入合并算法与页面清单合并（mergeTree）上移为 library.js 纯函数并补单测
+- 🧪 测试 49 项（+15）：tabs 生命周期 11 项、library 合并 4 项
+- 📝 新增 CONTEXT.md 领域术语表（架构评审 grilling 产物）
+
+### v1.0.20
+- ✨ 桌面端去 axhub-server.js 运行时依赖：静态服务核心抽为 serve-core.js，挂到自定义协议 `axhub://`（standard+secure+supportFetchAPI+stream），BrowserWindow 直接加载 `axhub://local/_axviewer/`
+- 🔒 桌面端全程不监听任何端口：本机其他进程无法再探测导出目录页面清单（旧 `/_api/tree` 在 127.0.0.1 对所有本地进程开放）；页面清单改走 preload IPC（tree:get）
+- 🔥 删除固定端口段循环 / ping 预检 / loadURL 四次重试与 localhost 兜底等端口相关补丁：origin 固定 `axhub://local`，localStorage 与端口彻底解耦
+- ♻️ axhub-server.js 保留为 CLI 浏览器模式（node axhub-server.js [目录]）与 zip 交付的 HTTP 适配层，路由/文件服务逻辑与桌面端同源于 serve-core.js
+- ✅ 测试 34 项：新增 serve-core 描述符级直测（穿越编码变体/Range/416/HEAD/302/503），原 HTTP 外部行为用例全部保留通过
+- 📦 打包 files 纳入 serve-core.js/scan-shared.js，extraResources 移除 axhub-server.js（桌面端不再需要）
+
 ### v1.0.19
 - ✨ 用户核心数据（收藏/标签/最近访问/标签页布局/分组折叠）落盘到 userData 磁盘文件：换端口、清缓存、升级不再丢数据；旧 localStorage 数据自动迁移
 - ✨ 备份弹窗「清空全部本地数据」同步清磁盘；提示文案更新

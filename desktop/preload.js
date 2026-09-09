@@ -1,6 +1,7 @@
 'use strict';
 // 启动屏/工作台与主进程的桥：目录选择、版本/更新、关闭行为，不暴露 Node。
 const { contextBridge, ipcRenderer } = require('electron');
+const { PREFIX } = require('./user-keys.js'); // key 前缀单源（渲染层 user-data.js 内联同一份）
 
 // ---------- 用户核心数据：磁盘为事实来源，localStorage 为同源缓存 ----------
 // 预加载阶段同步拉取磁盘快照灌入 localStorage（此时渲染层脚本尚未运行，
@@ -10,7 +11,7 @@ try {
   const disk = ipcRenderer.sendSync('user-data:load-sync');
   if (disk && typeof disk === 'object') {
     Object.keys(localStorage).slice().forEach(k => {
-      if (k.indexOf('wb_axhub_') === 0) localStorage.removeItem(k);
+      if (k.indexOf(PREFIX) === 0) localStorage.removeItem(k);
     });
     Object.keys(disk).forEach(k => {
       try { localStorage.setItem(k, JSON.stringify(disk[k])); } catch (e) { /* 单键失败不阻断 */ }
@@ -20,6 +21,10 @@ try {
 
 contextBridge.exposeInMainWorld('axhub', {
   selectDir: () => ipcRenderer.invoke('picker:select'),
+  // 移除当前关联的 AxHub 目录（解绑后重载为空态工作台，磁盘文件不动）
+  clearDir: () => ipcRenderer.invoke('dir:clear'),
+  // 页面清单：桌面端走 IPC（axhub:// 协议下无 /_api/tree 可达，也不暴露给本机其他进程）
+  getTree: () => ipcRenderer.invoke('tree:get'),
   version: () => ipcRenderer.invoke('app:version'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   // 关闭行为：主进程发起询问 → 页面弹 antd Modal → 回传选择

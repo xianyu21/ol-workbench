@@ -1,6 +1,6 @@
 # AxHub 原型工作台（ol-workbench）
 
-Electron 桌面端原型查看器：本地**零依赖** HTTP 服务 + **Vue 3 + Ant Design Vue** 查看器 UI，用于浏览 AxHub 导出的原型目录。
+Electron 桌面端原型查看器：**零端口、零依赖**（`axhub://` 自定义协议）+ **Vue 3 + Ant Design Vue** 查看器 UI，用于浏览 AxHub 导出的原型目录。
 
 > 2026-08-28 起：仅维护 Electron 桌面端；工作台 UI 已从单文件整体重写为 Vue 3 + Ant Design Vue（Vite 构建）。
 > 旧 HTTP 版仅以 `AxHub-HTTP-Server.zip` 保留交付，不再维护。
@@ -21,25 +21,29 @@ Electron 桌面端原型查看器：本地**零依赖** HTTP 服务 + **Vue 3 + 
 |---|---|
 | 桌面壳 | Electron `^30` + electron-builder `^24` |
 | UI | Vue `^3.4` + Vite `^5` + Ant Design Vue `^4.2` |
-| 本地服务 | Node 内置 `http`，零第三方依赖 |
+| 请求核心 | Node 内置模块，零第三方依赖；桌面端不监听任何端口 |
 
 ## 目录结构
 
 ```
 desktop/
-├─ main.js               # Electron 主进程：内起本地服务 + BrowserWindow 打开 /_axviewer
-├─ preload.js            # IPC 桥：选目录 / 更新 / 关闭行为 / 用户数据落盘
+├─ main.js               # Electron 主进程：axhub:// 自定义协议（serve-core）+ BrowserWindow 打开 axhub://local/_axviewer/
+├─ serve-core.js         # ★ 宿主无关请求核心：路由/MIME/Range/缓存/穿越防护/扫描，HTTP 与协议两端复用
+├─ preload.js            # IPC 桥：选目录 / 页面清单 / 更新 / 关闭行为 / 用户数据落盘
 ├─ picker.html           # 首屏选择 AxHub 导出目录
-├─ axhub-server.js       # 零依赖本地服务：/_api/tree 扫描；/_axviewer 服务 Vue 构建产物（同源）
+├─ axhub-server.js       # serve-core 的 Node http 适配层：CLI 浏览器模式（node axhub-server.js [目录]）
 ├─ scan-shared.js        # ★ 页面扫描单源纯逻辑（服务端 require + 浏览器 vite 内联，页面 ID 两端一致）
 ├─ user-store.js         # 用户核心数据磁盘存储（userData JSON，防抖原子写）
-├─ test/                 # node:test 测试（npm test）：本地服务请求层 + 存储模块 + 扫描单源
+├─ test/                 # node:test 测试（npm test）：请求核心 + HTTP 适配层 + 存储模块 + 扫描单源 + 标签生命周期 + 收藏库合并
 ├─ viewer/               # ★ Vue3 + Vite + antdv 工程（改 UI 只改这里）
 │  ├─ package.json       # vue / ant-design-vue / vite
 │  ├─ vite.config.js     # base:'./'，outDir='../viewer-dist'
 │  └─ src/
 │     ├─ main.js         # 入口，全量注册 antdv
-│     ├─ store.js        # 全局状态 + 数据读写（磁盘持久化为主，localStorage 为缓存）
+│     ├─ store.js        # 响应式 adapter：标签生命周期决策在 tabs.js，此处赋回 + 持久化
+│     ├─ tabs.js         # ★ 标签页生命周期纯函数（零 import，node:test 直测）：开/关/钉/LRU/会话恢复/自导航
+│     ├─ user-data.js    # ★ 用户数据持久化 module：get/set/persist/clear，key 清单单源 user-keys.js
+│     ├─ library.js      # ★ 收藏库合并纯函数：备份导入合并、扫描清单合并
 │     ├─ ui.js / ctx.js  # 弹窗状态 / 全局右键菜单
 │     ├─ App.vue         # 布局 + 顶栏 + 快捷键 + antdv 主题（主色 #1296db）
 │     └─ components/
@@ -83,10 +87,10 @@ npm start            # 构建 viewer 并启动桌面端
 
 ## 架构说明
 
-1. **主进程** `main.js` 启动本地服务并打开 `BrowserWindow`，加载 `/_axviewer`。
-2. **本地服务** `axhub-server.js` 提供 `/_api/tree` 目录扫描与 `/_axviewer` 静态服务（与页面同源，避免跨域）。CORS 收紧：默认不放行跨源，仅工作台 UI 路径按需回显 Origin。
+1. **主进程** `main.js` 把 `serve-core.js` 挂到自定义协议 `axhub://`（standard + secure + supportFetchAPI + stream），`BrowserWindow` 打开 `axhub://local/_axviewer/`。不监听任何端口：本机其他进程无法探测导出目录，也不再有端口漂移问题（origin 固定 `axhub://local`）。
+2. **请求核心** `serve-core.js` 提供目录扫描与静态服务（路由、MIME、Range/206、immutable 缓存、中文路径、目录穿越防护）；`axhub-server.js`（CLI）与协议层都是它的薄适配。CORS 收紧：仅工作台 UI 路径按需回显 Origin。
 3. **查看器 UI** `viewer/` 是独立 Vue 工程，构建产物 `viewer-dist/` 由 Electron 同源加载——改 UI 只改这里。
-4. **IPC** `preload.js` 桥接：选择 AxHub 导出目录、更新检查 / 下载进度、关闭行为、用户数据落盘。
+4. **IPC** `preload.js` 桥接：选择 AxHub 导出目录、页面清单（`tree:get`）、更新检查 / 下载进度、关闭行为、用户数据落盘。
 5. **扫描单源** `scan-shared.js`：框架页过滤 / 页面 ID（djb2）/ 分组 / 排序只有一份实现，服务端与浏览器端共用（ID 是用户数据主键，不可漂移）。
 
 ## 数据持久化与迁移
@@ -94,7 +98,6 @@ npm start            # 构建 viewer 并启动桌面端
 - 收藏 / 标签 / 重命名 / 最近访问 / 标签页布局 / 分组折叠状态由主进程落盘到 `userData/wb-user-data.json`（防抖 + 原子写）；`localStorage`（`wb_axhub_*`）退化为同源缓存。
 - 旧版数据（纯 localStorage）首次启动自动迁移落盘，无需手工操作；磁盘文件损坏时自动留档 `.corrupt` 并回退缓存数据。
 - 浏览器模式（CLI 起 `axhub-server.js` 后浏览器访问）无 Electron 桥接，行为退回纯 localStorage。
-
 ## 其他交付物
 
 - `AxHub-HTTP-Server.zip`：旧 HTTP 版交付包（不再维护）。

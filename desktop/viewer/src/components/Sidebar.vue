@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar" :class="{ collapsed: store.settings.collapsed }" :style="{ '--sbw': sbw + 'px' }">
+  <aside class="sidebar" :class="{ collapsed: store.settings.collapsed, dragging }" :style="{ '--sbw': sbw + 'px' }">
     <div class="sb-top">
       <a-input v-model:value="store.q" placeholder="搜索页面名 / 模块 (Ctrl+K)" allow-clear ref="qRef">
         <template #prefix><svg-icon name="search" :size="15" /></template>
@@ -32,13 +32,11 @@
       </template>
     </div>
 
+    <!-- 拖拽调宽手柄：最宽 35% 窗口 / 最窄 100px，拖过最窄线直接收起 -->
     <div class="resizer" @mousedown="startResize" />
   </aside>
-  <!-- 展开按钮放在侧栏元素外，收起后也不会被裁剪 -->
-  <button class="sb-toggle" :style="{ left: toggleLeft }" title="收起 / 展开侧栏 (Ctrl+B)"
-    @click="store.settings.collapsed = !store.settings.collapsed; persist()">
-    <svg-icon :name="store.settings.collapsed ? 'chevR' : 'chevL'" :size="15" />
-  </button>
+  <!-- 拖拽期间的全窗口透明遮罩：鼠标移到内容区 iframe 上方时事件不断流（否则拖拽会卡住/停住） -->
+  <div v-if="dragging" class="resize-cover" @mousemove="dragMove" @mouseup="endResize"></div>
 </template>
 
 <script setup>
@@ -48,16 +46,29 @@ import SectionNode from './SectionNode.vue'
 import {
   store, persist, sidebarSections, collapseAll, expandAll, ancestorKeysOfPid
 } from '../store.js'
+import * as userData from '../user-data.js'
 
 const sections = sidebarSections
 const qRef = ref(null)
 const scrollRef = ref(null)
-const sbw = ref(parseSbw())
-const toggleLeft = computed(() => store.settings.collapsed ? '8px' : (sbw.value - 13) + 'px')
+// 宽度：初始沿用历史保存值（100 ~ 35% 窗口），之后支持拖拽调整
+const SBW_MIN = 100
+const SBW_RESTORE = 300            // logo 展开时恢复的固定宽度
+const maxSbw = () => Math.floor(window.innerWidth * 0.35)
+const sbw = ref(Math.max(SBW_MIN, Math.min(maxSbw(), userData.get('sbw', 300) || SBW_MIN)))
 
-function parseSbw () {
-  try { const v = JSON.parse(localStorage.getItem('wb_axhub_sbw')); if (typeof v === 'number') return v } catch (e) {}
-  return 300
+// 窗口变窄时若超出新的 35% 上限，自动收窄侧栏
+function clampOnResize () {
+  if (store.settings.collapsed) return
+  if (sbw.value > maxSbw()) { sbw.value = Math.max(SBW_MIN, maxSbw()); userData.set('sbw', sbw.value) }
+}
+
+// 顶栏 logo（或 Ctrl+B）从收起态展开：恢复为固定宽度 300px（受 35% 上限约束）
+function restoreSidebar () {
+  sbw.value = Math.max(SBW_MIN, Math.min(maxSbw(), SBW_RESTORE))
+  userData.set('sbw', sbw.value)
+  store.settings.collapsed = false
+  persist()
 }
 
 const chips = computed(() => {
@@ -78,20 +89,49 @@ function toggleFilter (key) {
 }
 
 function focusSearch () { if (qRef.value) qRef.value.focus() }
-onMounted(() => window.addEventListener('ax-focus-search', focusSearch))
-onBeforeUnmount(() => window.removeEventListener('ax-focus-search', focusSearch))
+onMounted(() => {
+  window.addEventListener('ax-focus-search', focusSearch)
+  window.addEventListener('resize', clampOnResize)
+  window.addEventListener('ax-restore-sidebar', restoreSidebar)
+  window.addEventListener('mouseup', endResize)   // 遮罩外的兜底结束（窗口外松键等）
+  window.addEventListener('blur', endResize)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('ax-focus-search', focusSearch)
+  window.removeEventListener('resize', clampOnResize)
+  window.removeEventListener('ax-restore-sidebar', restoreSidebar)
+  window.removeEventListener('mouseup', endResize)
+  window.removeEventListener('blur', endResize)
+})
 
-/* ---------- 侧栏宽度拖拽 ---------- */
+/* ---------- 侧栏宽度拖拽 ----------
+ * 卡顿处理：
+ *  1) 拖拽时 .sidebar 挂 .dragging → 关闭 0.2s 宽度过渡，宽度 1:1 跟手
+ *     （原来每个 mousemove 都在追动画，看着发飘、明显延迟）
+ *  2) 拖拽时挂全窗口遮罩 .resize-cover（z-index 高于内容 iframe），
+ *     避免鼠标移进 iframe 后 mousemove 断流导致拖到一半卡住
+ * 约束：最宽 = 当前窗口 35%；最窄 = 100px；拖到 100px 以内直接收起 */
+const dragging = ref(false)
+
 function startResize (e) {
   e.preventDefault()
-  const move = ev => { sbw.value = Math.max(210, Math.min(560, ev.clientX)) }
-  const up = () => {
-    try { localStorage.setItem('wb_axhub_sbw', JSON.stringify(sbw.value)) } catch (err) {}
-    document.removeEventListener('mousemove', move)
-    document.removeEventListener('mouseup', up)
+  dragging.value = true
+}
+
+function dragMove (ev) {
+  if (ev.clientX < SBW_MIN) {   // 拖过最窄线 → 立即收起（结束拖拽后收起动画照常播放）
+    store.settings.collapsed = true
+    persist()
+    endResize()
+    return
   }
-  document.addEventListener('mousemove', move)
-  document.addEventListener('mouseup', up)
+  sbw.value = Math.min(maxSbw(), ev.clientX)
+}
+
+function endResize () {
+  if (!dragging.value) return
+  dragging.value = false
+  userData.set('sbw', sbw.value) // 经持久化 module 落盘（旧版直写 localStorage 从不落盘，重启即丢）
 }
 
 /* 需求3：激活 tab 后，自动展开其所在分组（含所有祖先）并滚动定位 */
@@ -114,10 +154,14 @@ watch(() => store.active, () => {
 
 <style scoped>
 .sidebar{flex:0 0 var(--sbw);width:var(--sbw);min-width:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;position:relative;z-index:30;transition:flex-basis .2s ease,width .2s ease}
+.sidebar.dragging{transition:none}   /* 拖拽中关闭过渡：宽度 1:1 跟手，避免追动画的延迟 */
 .sidebar.collapsed{flex-basis:0;width:0;border-right-width:0;overflow:hidden}
+.resizer{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:35}
 .sidebar.collapsed .resizer{display:none}
-.sb-toggle{position:fixed;top:9px;z-index:50;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text-2);display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-1);transition:left .2s ease,background .1s}
-.sb-toggle:hover{background:var(--panel-3);color:var(--primary)}
+.resizer:hover::after{content:'';position:absolute;left:2px;top:0;width:2px;height:100%;background:var(--primary)}
+.sidebar.dragging .resizer::after{content:'';position:absolute;left:2px;top:0;width:2px;height:100%;background:var(--primary)}
+/* 拖拽遮罩：fixed 铺满窗口、z-index 高于 iframe，保证 mousemove/mouseup 全程落在主文档 */
+.resize-cover{position:fixed;inset:0;z-index:9998;cursor:col-resize;user-select:none;touch-action:none}
 .sb-top{padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border-2)}
 .sb-all{display:flex;gap:6px}
 .sb-all .mini{display:inline-flex;align-items:center;gap:4px;flex:1 1 0;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
@@ -135,7 +179,4 @@ watch(() => store.active, () => {
 .empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
 .empty svg{color:#c3ccd7;margin-bottom:8px}
 .empty b{color:var(--text-2);display:block;margin-bottom:4px;font-size:13.5px}
-.resizer{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:35}
-.resizer:hover::after{content:'';position:absolute;left:2px;top:0;width:2px;height:100%;background:var(--primary)}
-.sb-toggle:hover{background:var(--panel-3);color:var(--primary)}
 </style>

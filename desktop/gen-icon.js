@@ -1,5 +1,8 @@
 'use strict';
-// 生成 build/icon.ico：与 picker.html logo 一致（蓝渐变圆角方块 + 白色三层菱形堆叠）
+// 生成应用图标（与 picker.html logo 一致：蓝渐变圆角方块 + 白色三层菱形堆叠）
+// 用法:
+//   node gen-icon.js          → 生成 build/icon.ico（多尺寸 PNG 帧打包，供 Windows）
+//   node gen-icon.js png [n]  → 生成 build/icon.png（默认 1024x1024，供 macOS icns 转换）
 const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
@@ -60,6 +63,14 @@ function packIco(pngs) {
 }
 
 (async () => {
+  const mode = process.argv[2];
+  if (mode === 'png') {
+    const size = Number(process.argv[3]) || 1024;
+    const out = path.join(__dirname, 'build', 'icon.png');
+    fs.writeFileSync(out, makePng(size));
+    console.log('icon png written:', out, `(${size}x${size})`);
+    return;
+  }
   const pngs = [256, 128, 64, 48, 32, 16].map(size => ({ size, data: makePng(size) }));
   const out = path.join(__dirname, 'build', 'icon.ico');
   fs.writeFileSync(out, packIco(pngs));

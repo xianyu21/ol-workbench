@@ -26,14 +26,6 @@
             </template>
           </span>
         </span>
-        <span class="it-act">
-          <button :class="{ fav: p.fav }" title="收藏" @click.stop="toggleFav(p)">
-            <svg-icon name="star" :size="14" :fill="!!p.fav" />
-          </button>
-          <button title="更多" @click.stop="menuAt($event, p)">
-            <svg-icon name="menu" :size="14" />
-          </button>
-        </span>
       </div>
       <SectionNode v-for="c in node.children" :key="c.key" :node="c" />
     </div>
@@ -92,10 +84,6 @@ function buildMenu (p) {
   ]
 }
 function menu (e, p) { showCtx(e.clientX, e.clientY, buildMenu(p)) }
-function menuAt (e, p) {
-  const r = e.currentTarget.getBoundingClientRect()
-  showCtx(r.left, r.bottom + 4, buildMenu(p))
-}
 function open (pid) { openProject(pid, false) }
 function openExternal (p) {
   const w = window.open('/' + encodeURIComponent(p.path), '_blank')
@@ -152,10 +140,5 @@ function confirmRemove (p) {
 .it-meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;margin-top:1px}
 .it-meta .tg{display:inline-flex;align-items:center;gap:3px}
 .it-meta .tg i{width:6px;height:6px;border-radius:50%;display:inline-block}
-.it-act{flex:0 0 auto;display:flex;gap:1px;opacity:0;transition:opacity .12s}
-.item:hover .it-act,.item.active .it-act{opacity:1}
-.it-act button{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--muted);cursor:pointer}
-.it-act button:hover{background:rgba(31,43,61,.09);color:var(--text)}
-.it-act button.fav{color:var(--warn)}
 </style>
 

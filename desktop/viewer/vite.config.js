@@ -10,9 +10,9 @@ export default defineConfig({
     // 沙箱 safe-delete shim 会拦截 vite 清空输出目录；关闭后只写新文件，旧 hash 残留无害
     emptyOutDir: false,
     chunkSizeWarningLimit: 1600,
-    // scan-shared.js 为 CJS 双格式单源模块（Node require + 浏览器内联），
-    // 默认 commonjs 处理只覆盖 node_modules，这里把它也纳入
-    commonjsOptions: { include: [/node_modules/, /scan-shared\.js$/] },
+    // scan-shared.js / user-keys.js 为 CJS 双格式单源模块（Node require + 浏览器内联），
+    // 默认 commonjs 处理只覆盖 node_modules，这里把它们也纳入
+    commonjsOptions: { include: [/node_modules/, /scan-shared\.js$/, /user-keys\.js$/] },
     rollupOptions: {
       output: {
         // 把体积大头 ant-design-vue / vue 拆成独立 chunk，业务代码改动时命中缓存

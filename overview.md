@@ -7,16 +7,17 @@
 
 ```
 desktop/
-├─ main.js               # Electron 主进程：内起本地服务 + BrowserWindow 打开 /_axviewer
-├─ preload.js            # 选目录 IPC
+├─ main.js               # Electron 主进程：axhub:// 自定义协议（serve-core）+ BrowserWindow 打开 axhub://local/_axviewer/
+├─ serve-core.js         # ★ 宿主无关请求核心：桌面端协议层与 CLI HTTP 层复用（桌面端不监听端口）
+├─ preload.js            # 选目录 / 页面清单 IPC
 ├─ picker.html           # 首屏选择 AxHub 导出目录
-├─ axhub-server.js       # 零依赖本地服务：/_api/tree 扫描；/_axviewer 服务 Vue 构建产物（同源）
+├─ axhub-server.js       # serve-core 的 Node http 适配层：CLI 浏览器模式（/_api/tree + /_axviewer 同源）
 ├─ viewer/               # ★ Vue3 + Vite + antdv 工程（改 UI 只改这里）
 │  ├─ package.json       # vue / ant-design-vue / vite
 │  ├─ vite.config.js     # base:'./'，outDir='../viewer-dist'
 │  └─ src/
 │     ├─ main.js         # 入口，全量注册 antdv
-│     ├─ store.js        # 全局状态 + localStorage（wb_axhub_*，与旧版同 key 无缝迁移）
+│     ├─ store.js        # 响应式 adapter（生命周期决策在 tabs.js；持久化经 user-data.js）
 │     ├─ ui.js / ctx.js  # 弹窗状态 / 全局右键菜单
 │     ├─ App.vue         # 布局 + 顶栏 + 快捷键 + antdv 主题（主色 #1296db）
 │     └─ components/

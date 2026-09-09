@@ -1,50 +1,31 @@
 #!/usr/bin/env node
 /*
- * AxHub 原型工作台 · 本地服务（零依赖） v1.0.1
+ * AxHub 原型工作台 · 本地服务（零依赖） v1.1.0
  * --------------------------------------------------------------
- * 技术栈：纯 Node 原生 http（无需 npm install），替代上一代 file:// 单文件方案。
+ * 技术栈：纯 Node 原生 http（无需 npm install）。
  *
- * 解决的问题（相对原 file:// 方案）：
- *   1. AxHub 标准导出是「扁平结构」：index.html 框架 + 数百个顶级 .html 页面 + 共享 resources/data/images/files，
- *      不是「每目录一个 index.html」。file:// 下查看器与导出不在同级时，跨目录 iframe 被浏览器拦截。
- *   2. file:// 缓存利用率低，500+ 页面、几十 MB 体量下首开卡顿没根治。HTTP + 强缓存可根治。
- *   3. AxHub 部分交互依赖同源 / XHR，HTTP 下完全正常。
- *
- * 约束条件：
- *   - 零 npm 依赖，仅用 Node 内置模块。
- *   - 不污染 AxHub 导出目录：工作台 UI 在内存中生成，不落盘到用户目录。
- *   - 根目录 = AxHub 导出目录，同源服务，中文路径正确解码。
+ * 自 v1.1.0 起，路由/静态服务/扫描逻辑全部在 serve-core.js（宿主无关核心），
+ * 本文件只是它的 Node http 适配层 + CLI 入口：桌面端（Electron）已改用
+ * axhub:// 自定义协议直连 serve-core，不再经过本 HTTP 服务；本文件保留用于
+ * CLI 浏览器模式（node axhub-server.js [目录]）与 AxHub-HTTP-Server.zip 交付。
  *
  * 用法：
  *   node axhub-server.js [AxHub根目录] [--port N] [--no-open]
  *   不带参数时默认服务当前工作目录。
  */
 'use strict';
-const VERSION = '1.0.6';
+const VERSION = '1.1.0';
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const url = require('url');
+const path = require('path');
+const fs = require('fs');
 const { exec } = require('child_process');
-// 页面扫描纯逻辑单源（框架页过滤/页面 ID/分组/排序），浏览器端内联同一份文件
-const AxHubScan = require('./scan-shared.js');
+const core = require('./serve-core.js');
 
-// 工作台 UI：Vue3 + antdv 构建产物目录（desktop/viewer/ → vite build → viewer-dist/）
-// 开发期 __dirname = desktop/，打包后 __dirname = resources/，两种形态下 viewer-dist 都与 server 同目录。
-let VIEWER_DIR = path.join(__dirname, 'viewer-dist');
-if (!fs.existsSync(VIEWER_DIR)) {
-  // 兼容 asar 打包后从 resources/app.asar.unpacked 等位置查找
-  const alts = [
-    path.join(process.resourcesPath, 'viewer-dist'),
-    path.join(__dirname, '..', 'viewer-dist'),
-    path.join(process.cwd(), 'viewer-dist')
-  ];
-  for (const a of alts) { if (fs.existsSync(a)) { VIEWER_DIR = a; break; } }
-}
-console.log('[axhub-server] viewer-dist:', VIEWER_DIR, 'exists:', fs.existsSync(VIEWER_DIR));
+console.log('[axhub-server] viewer-dist:', core.VIEWER_DIR, 'exists:', fs.existsSync(core.VIEWER_DIR));
 
 // ---------- 解析参数 ----------
-function parseArgs(argv) {
+function parseArgs (argv) {
   let root = null, port = 0, open = true;
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -59,181 +40,32 @@ function parseArgs(argv) {
   }
   return { root: root ? path.resolve(root) : process.cwd(), port, open };
 }
-// ROOT 在 startServer() 中按传入目录赋值；CLI 模式下由下方 require.main 守卫段赋值。
-let ROOT = process.cwd();
 
-// ---------- MIME ----------
-const MIME = {
-  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg',
-  '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
-  '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
-  '.xml': 'application/xml', '.csv': 'text/csv; charset=utf-8'
-};
-function mimeOf(p) { return MIME[path.extname(p).toLowerCase()] || 'application/octet-stream'; }
-
-// ---------- 安全路径 ----------
-function safeJoin(root, reqPath) {
-  // reqPath 已 decode
-  const t = path.normalize(path.join(root, reqPath));
-  if (t !== root && !t.startsWith(root + path.sep)) return null; // 防目录穿越
-  return t;
-}
-
-// ---------- 扫描 AxHub 标准扁平导出（纯逻辑见 scan-shared.js 单源） ----------
-function scanAxHub(root) {
-  let entries;
-  try { entries = fs.readdirSync(root, { withFileTypes: true }); }
-  catch (e) { return { error: '无法读取目录: ' + e.message, pages: [], root, name: path.basename(root) }; }
-  const pages = [];
-  for (const ent of entries) {
-    if (!ent.isFile()) continue;
-    const f = ent.name;
-    if (AxHubScan.isFrameFile(f)) continue;
-    let st;
-    try { st = fs.statSync(path.join(root, f)); } catch (e) { continue; }
-    const name = AxHubScan.baseNameOf(f);
-    pages.push({
-      id: AxHubScan.computePageId(f),
-      name, path: f, size: st.size, group: AxHubScan.groupOf(name), mtime: st.mtimeMs
-    });
-  }
-  AxHubScan.sortPages(pages);
-  const hasData = fs.existsSync(path.join(root, 'data', 'document.js'));
-  const hasIndex = fs.existsSync(path.join(root, 'index.html'));
-  return {
-    pages, root,
-    name: path.basename(root),
-    entry: hasIndex ? 'index.html' : null,
-    hasData,
-    note: 'AxHub 标准扁平导出：index.html 为框架，顶级 .html 为各业务页面，resources/data/images/files 共享。'
-  };
-}
-
-// ---------- 静态文件响应（支持 Range / 304） ----------
-// allowOrigin：仅工作台 UI 路径按需放行（浏览器带 Origin 的跨源请求回显其 Origin）；
-// 原型页面与 API 一律不发 CORS 头，防止用户浏览器里打开的任意网页探测本地目录。
-function serveFile (req, res, full, status, allowOrigin) {
-  let st;
-  try { st = fs.statSync(full); } catch (e) {
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return;
-  }
-  if (st.isDirectory()) {
-    // 尝试目录下的 index.html
-    const idx = path.join(full, 'index.html');
-    if (fs.existsSync(idx)) return serveFile(req, res, idx, status, allowOrigin);
-    res.writeHead(403); res.end('Forbidden'); return;
-  }
-  const total = st.size;
-  const type = mimeOf(full);
-  // Axure 导出的资源目录内容基本不变，可长缓存 immutable；HTML/JSON 保持 1 小时以便重新导出后生效
-  const seg0 = path.relative(ROOT, full).split(path.sep)[0];
-  const ext = path.extname(full).toLowerCase();
-  const immutableExt = new Set(['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.mp4', '.webm', '.mp3', '.wav']);
-  const immutableDir = new Set(['resources', 'images', 'files', 'data', 'css', 'js', 'styles', 'scripts', 'fonts']);
-  const isImmutable = immutableExt.has(ext) || immutableDir.has(seg0);
-  const headers = {
-    'Content-Type': type,
-    'Accept-Ranges': 'bytes',
-    'Cache-Control': isImmutable ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
-    'Last-Modified': st.mtime.toUTCString()
-  };
-  if (allowOrigin) headers['Access-Control-Allow-Origin'] = allowOrigin;
-  const range = req.headers.range;
-  if (range) {
-    const m = /bytes=(\d*)-(\d*)/.exec(range);
-    let start = m && m[1] ? parseInt(m[1], 10) : 0;
-    let end = m && m[2] ? parseInt(m[2], 10) : total - 1;
-    if (isNaN(start) || start < 0) start = 0;
-    if (isNaN(end) || end >= total) end = total - 1;
-    if (start > end) { res.writeHead(416, { 'Content-Range': 'bytes */' + total }); res.end(); return; }
-    headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + total;
-    headers['Content-Length'] = end - start + 1;
-    res.writeHead(206, headers);
-    fs.createReadStream(full, { start, end }).pipe(res);
-    return;
-  }
-  headers['Content-Length'] = total;
-  res.writeHead(status || 200, headers);
-  if (req.method === 'HEAD') { res.end(); return; }
-  fs.createReadStream(full).pipe(res);
-}
-
-// ---------- 读取工作台 UI（按 mtime 缓存，文件变更自动热更新，无需重启服务）----------
-let VIEWER_HTML = null, VIEWER_MTIME = -1;
-function viewerIndexFile() {
-  // 仅 Vue 构建产物；未构建则返回 null（不再回退旧版单文件）
-  const idx = path.join(VIEWER_DIR, 'index.html');
-  try { fs.accessSync(idx); return idx; } catch (e) { return null; }
-}
-function getViewerHtml() {
-  const f = viewerIndexFile();
-  try {
-    const st = fs.statSync(f);
-    if (!VIEWER_HTML || VIEWER_HTML_FILE !== f || st.mtimeMs !== VIEWER_MTIME) {
-      VIEWER_HTML = fs.readFileSync(f, 'utf8');
-      VIEWER_MTIME = st.mtimeMs;
-      VIEWER_HTML_FILE = f;
-    }
-  } catch (e) {
-    if (!VIEWER_HTML) VIEWER_HTML = '<!doctype html><meta charset=utf-8><h1>找不到工作台 UI</h1><p>请在 desktop/viewer 下执行 <code>npm run build</code> 生成 viewer-dist（运行 <code>npm start</code> 会自动构建）。</p>';
-  }
-  return VIEWER_HTML;
-}
-let VIEWER_HTML_FILE = null;
-
-// ---------- 请求处理器（CLI 与 Electron 复用）----------
-function requestHandler(req, res) {
+// ---------- HTTP 适配层：核心描述符 → Node 响应 ----------
+function requestHandler (req, res) {
   try {
     const u = url.parse(req.url);
-    let p = decodeURIComponent(u.pathname || '/');
-    if (p === '/') p = '/index.html';
-    // 虚拟路由：无尾斜杠时 302 到带尾斜杠，保证相对路径 ./assets 正确解析为 /_axviewer/assets
-    if (p === '/_axviewer') {
-      res.writeHead(302, { 'Location': '/_axviewer/' }); res.end(); return;
-    }
-    if (p === '/_axviewer/') {
-      const html = getViewerHtml();
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return;
-    }
-    // 工作台 UI 静态资源（Vue 构建产物 assets 等），与 AxHub 页面同源；
-    // 仅此路径对跨源请求按需回显 Origin（无 Origin 的同源请求不发 CORS 头）
-    if (p.startsWith('/_axviewer/')) {
-      const sub = p.slice('/_axviewer/'.length);
-      const full = safeJoin(VIEWER_DIR, sub);
-      if (!full) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Forbidden'); return; }
-      serveFile(req, res, full, undefined, req.headers.origin || null); return;
-    }
-    if (p === '/_api/tree' || p === '/_api/tree/') {
-      const data = scanAxHub(ROOT);
-      // 不带 CORS 头：页面清单含本地目录信息，禁止任意网页跨源读取
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(data)); return;
-    }
-    if (p === '/_api/ping') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }
-    // 静态服务根目录
-    const full = safeJoin(ROOT, p);
-    if (!full) { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Forbidden'); return; }
-    serveFile(req, res, full);
+    const r = core.handleRequest({ root: core.getRoot(), method: req.method, urlPath: u.pathname || '/', headers: req.headers });
+    res.writeHead(r.status, r.headers);
+    if (r.stream) { r.stream.pipe(res); return; }
+    res.end(r.body === null || r.body === undefined ? undefined : r.body);
   } catch (err) {
     console.error('[axhub-server] requestHandler error:', err);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Internal Server Error: ' + (err && err.message || String(err)));
+    } else {
+      try { res.end(); } catch (e) { /* socket 已断 */ }
     }
   }
 }
 
-// ---------- 启动（可被 require 复用）----------
+// ---------- 启动（可被 require 复用） ----------
 // 返回 Promise<server>；port 为 0 时由系统分配空闲端口。
-function startServer(root, opts) {
+function startServer (root, opts) {
   opts = opts || {};
-  ROOT = path.resolve(root || process.cwd());
+  const dir = path.resolve(root || process.cwd());
+  core.setRoot(dir);
   const port = opts.port || 0;
   const open = opts.open !== false;
   return new Promise((resolve, reject) => {
@@ -246,12 +78,12 @@ function startServer(root, opts) {
     srv.listen(port, '127.0.0.1', () => {
       const p = srv.address().port;
       const addr = 'http://127.0.0.1:' + p + '/_axviewer';
-    console.log('────────────────────────────────────────────');
-    console.log(' AxHub 原型工作台 · 本地服务已启动  v' + VERSION);
-    console.log(' 数据源 : ' + ROOT);
-    console.log(' 工作台 : ' + addr);
-    console.log(' viewer-dist : ' + VIEWER_DIR + ' (exists=' + fs.existsSync(VIEWER_DIR) + ')');
-    console.log('────────────────────────────────────────────');
+      console.log('────────────────────────────────────────────');
+      console.log(' AxHub 原型工作台 · 本地服务已启动  v' + VERSION);
+      console.log(' 数据源 : ' + dir);
+      console.log(' 工作台 : ' + addr);
+      console.log(' viewer-dist : ' + core.VIEWER_DIR + ' (exists=' + fs.existsSync(core.VIEWER_DIR) + ')');
+      console.log('────────────────────────────────────────────');
       console.log(' 按 Ctrl+C 停止');
       if (open) {
         const cmd = process.platform === 'win32'
@@ -265,9 +97,10 @@ function startServer(root, opts) {
   });
 }
 
-module.exports = { startServer, scanAxHub, safeJoin, getViewerHtml, requestHandler };
+// 兼容旧导出形态（测试与外部脚本引用的是 axhub-server.js 的这些名字）
+module.exports = { startServer, requestHandler, scanAxHub: core.scanAxHub, safeJoin: core.safeJoin, getViewerHtml: core.getViewerHtml, core };
 
-// ---------- CLI 入口（仅 node axhub-server.js 直接运行时执行）----------
+// ---------- CLI 入口（仅 node axhub-server.js 直接运行时执行） ----------
 if (require.main === module) {
   const ARGS = parseArgs(process.argv);
   startServer(ARGS.root, { port: ARGS.port, open: ARGS.open }).catch(() => process.exit(1));

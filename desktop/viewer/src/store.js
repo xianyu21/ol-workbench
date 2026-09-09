@@ -1,41 +1,15 @@
 import { reactive, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import * as userData from './user-data.js'
 
 /* ==========================================================================
  * 全局状态 store（对应旧版 axhub-viewer.html 的 S 对象）
- * localStorage key 与旧版完全一致（wb_axhub_*），升级无缝继承历史数据
+ * 持久化全部经 user-data.js（key 清单单源 user-keys.js）；store 是响应式 adapter，
+ * 组件改状态后调用 persist() 把已知 key 整体写穿缓存并触发防抖落盘。
  * ========================================================================== */
 
-const K = 'wb_axhub_'
-function load (k, d) {
-  try { const v = localStorage.getItem(K + k); return v == null ? d : JSON.parse(v) } catch (e) { return d }
-}
-function saveRaw (k, v) {
-  try { localStorage.setItem(K + k, JSON.stringify(v)); return true } catch (e) { return false } finally { scheduleDiskSave() }
-}
-
-/* ---------- 桌面端磁盘持久化 ----------
- * preload 启动时已把磁盘快照灌入 localStorage（磁盘为事实来源），这里只需在每次
- * 变更后把全部 wb_axhub_* 键整包回传给主进程防抖落盘。浏览器端无桥接，退回纯
- * localStorage 行为。防抖合并高频小写（拖侧栏宽度、连续开关分组等）。 */
-let diskSaveTimer = null
-function scheduleDiskSave () {
-  if (!window.axhub || typeof window.axhub.saveUserData !== 'function') return
-  if (diskSaveTimer) return
-  diskSaveTimer = setTimeout(() => {
-    diskSaveTimer = null
-    try {
-      const snap = {}
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k && k.indexOf(K) === 0) {
-          try { snap[k] = JSON.parse(localStorage.getItem(k)) } catch (e) { snap[k] = localStorage.getItem(k) }
-        }
-      }
-      window.axhub.saveUserData(snap)
-    } catch (e) { /* 快照失败不影响运行 */ }
-  }, 300)
-}
+function load (k, d) { return userData.get(k, d) }
+function saveRaw (k, v) { userData.set(k, v) }
 
 export const PALETTE = ['#1296db', '#16a34a', '#f97316', '#e5484d', '#8b5cf6', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ca8a04']
 export const DEF_TAGS = [
@@ -74,6 +48,7 @@ export function persist () {
   saveRaw('tabs', store.tabs)
   saveRaw('active', store.active)
   saveRaw('settings', store.settings)
+  userData.persist() // set 已各自触发，这里兜底立即合并一次防抖
 }
 /* ---------- 工具 ---------- */
 export function fmtSize (b) {
@@ -107,9 +82,16 @@ export function initials (name) {
   if (m) return m[0]
   return s.slice(0, 2).toUpperCase() || '?'
 }
-// 同源相对路径（server 根 = AxHub 目录）
-export function enc (p) { return '/' + encodeURIComponent(p) }
-export function srcOf (p) { return p.native ? '/index.html' : enc(p.path) }
+
+/* ---------- 标签页生命周期：纯函数在 tabs.js，store 只做响应式 adapter ----------
+ * tabs.js 零 import、不可变返回新状态；这里把返回值赋回 reactive store 并持久化。
+ * invariant「激活标签永不休眠」由 tabs.js 构造保证（旧版靠 ViewerPane 安全网 watcher）。 */
+import * as tabLifecycle from './tabs.js'
+import * as library from './library.js'
+
+// 页面 URL 词汇由 tabs.js 单源（自导航/链接拦截与 store 共用）
+export const enc = tabLifecycle.enc
+export const srcOf = tabLifecycle.srcOf
 
 export function getP (id) {
   if (id === NATIVE_ID) return NATIVE_PAGE
@@ -122,8 +104,15 @@ export const activeTab = computed(() => store.tabs.filter(t => t.id === store.ac
 export async function fetchTree () {
   store.loaded = true
   try {
-    const r = await fetch('/_api/tree')
-    const data = await r.json()
+    // 桌面端：axhub:// 协议下无 /_api/tree，页面清单走 preload IPC；
+    // CLI 浏览器模式（http 服务）无 axhub 桥，回退 fetch 同源接口
+    let data
+    if (window.axhub && typeof window.axhub.getTree === 'function') {
+      data = await window.axhub.getTree()
+    } else {
+      const r = await fetch('/_api/tree')
+      data = await r.json()
+    }
     store.serverOk = true
     if (data.error) { store.loadError = data.error; return }
     mergeTree(data)
@@ -133,27 +122,28 @@ export async function fetchTree () {
     store.loadError = ''
   } catch (e) {
     store.serverOk = false
-    store.loadError = '无法连接本地服务'
+    store.loadError = '无法读取页面清单'
   }
 }
 function mergeTree (data) {
-  const local = {}
-  ;(store.projects || []).forEach(p => { if (p.path) local[p.path] = p })
-  store.projects = data.pages.map(p => {
-    const l = local[p.path] || {}
-    return {
-      id: p.id, name: l.renamed ? l.name : p.name, path: p.path, group: p.group, size: p.size,
-      tags: l.tags || [], fav: l.fav || 0, cover: l.cover || null, renamed: l.renamed || 0,
-      openCount: l.openCount || 0, lastOpen: l.lastOpen || 0, addedAt: l.addedAt || Date.now()
-    }
-  })
+  // 清单重建 + 本地标注按路径保留：纯函数在 library.js
+  store.projects = library.mergeScannedPages(store.projects || [], data.pages, Date.now()).projects
   // 清理已不存在页面的标签页引用（原生导航标签不来自 projects，保留）
-  store.tabs = store.tabs.filter(t => t.pid === NATIVE_ID || store.projects.some(p => p.id === t.pid))
-  if (store.active && !store.tabs.some(t => t.id === store.active)) store.active = store.tabs.length ? store.tabs[0].id : null
+  const pruned = tabLifecycle.pruneTabs(tabModel(), pid => pid === NATIVE_ID || store.projects.some(p => p.id === pid))
+  if (pruned) { store.tabs = pruned.tabs; store.active = pruned.active }
   persist()
 }
 
-/* ---------- 多标签 ---------- */
+/* ---------- 多标签（生命周期决策在 tabs.js，此处只赋回 + 持久化） ---------- */
+function tabModel () { return { tabs: store.tabs, active: store.active, tabSeq } }
+function applyTabs (r) {
+  if (!r) return
+  if (r.tabs !== undefined) store.tabs = r.tabs
+  if (r.active !== undefined) store.active = r.active
+  if (r.tabSeq && r.tabSeq !== tabSeq) tabSeq.n = r.tabSeq.n
+  persist()
+}
+
 export function bump (p) {
   if (!p || p.native) return
   p.openCount = (p.openCount || 0) + 1
@@ -168,49 +158,28 @@ export function bump (p) {
 export function openProject (pid, forceNew) {
   const p = getP(pid)
   if (!p) return null
-  const ex = tabOf(pid)
-  if (ex && !forceNew) { setActive(ex.id); bump(p); return ex }
-  const cur = activeTab.value
-  let tab
-  if (!forceNew && cur && !cur.pinned) {
-    cur.pid = pid; cur.title = p.name; cur.native = !!p.native; cur.sleep = false; cur.loading = true
-    delete cur.src // 浏览器式替换：iframe 按新 pid 重新加载
-    tab = cur
-    store.active = cur.id
-  } else {
-    tab = { id: 't' + (tabSeq.n++), pid, pinned: false, title: p.name, native: !!p.native, sleep: false, loading: true }
-    saveRaw('tabSeq', tabSeq.n)
-    store.tabs.push(tab)
-    store.active = tab.id
-  }
-  bump(p); persist()
-  return tab
+  applyTabs(tabLifecycle.open(tabModel(), { id: p.id, name: p.name, native: p.native }, { forceNew, now: Date.now() }))
+  bump(p)
+  return tabOf(pid)
 }
 
 export function setActive (id) {
   if (store.active === id) return
-  store.active = id
-  const t = store.tabs.filter(x => x.id === id)[0]
-  if (t && t.sleep) { t.sleep = false; t.loading = true } // 唤醒：重建 iframe（ViewerPane 渲染）
-  persist()
+  applyTabs(tabLifecycle.setActive(tabModel(), id, Date.now()))
 }
-
-export function closeTab (id) {
-  const i = store.tabs.findIndex(t => t.id === id)
-  if (i < 0) return
-  store.tabs.splice(i, 1)
-  if (store.active === id) store.active = store.tabs.length ? store.tabs[Math.max(0, i - 1)].id : null
-  persist()
+export function wakeTab (id) { applyTabs(tabLifecycle.wake(tabModel(), id, Date.now())) }
+export function closeTab (id) { applyTabs(tabLifecycle.close(tabModel(), id)) }
+export function togglePin (id) { applyTabs(tabLifecycle.togglePin(tabModel(), id)) }
+export function reloadTab (id) { applyTabs(tabLifecycle.reload(tabModel(), id)) }
+export function markLoaded (id) { applyTabs(tabLifecycle.markLoaded(tabModel(), id)) }
+export function sweepLru () { applyTabs(tabLifecycle.lruSweep(tabModel(), store.settings.maxAlive)) }
+export function restoreSessionTabs () { applyTabs(tabLifecycle.restoreSession(tabModel())) }
+export function retargetTab (id, page) {
+  applyTabs(tabLifecycle.retargetSelfNav(tabModel(), id, page))
+  bump(page)
 }
-export function togglePin (id) {
-  const t = store.tabs.filter(x => x.id === id)[0]
-  if (!t) return
-  t.pinned = !t.pinned
-  store.tabs = store.tabs.filter(x => x.pinned).concat(store.tabs.filter(x => !x.pinned))
-  persist()
-}
-export function closeOthers (keep) { store.tabs.slice().forEach(t => { if (t.id !== keep && !t.pinned) closeTab(t.id) }) }
-export function closeAllUnpinned () { store.tabs.slice().forEach(t => { if (!t.pinned) closeTab(t.id) }) }
+export function closeOthers (keep) { applyTabs(tabLifecycle.closeOthers(tabModel(), keep)) }
+export function closeAllUnpinned () { applyTabs(tabLifecycle.closeAllUnpinned(tabModel())) }
 
 /* ---------- 侧栏筛选/排序 ---------- */
 export const visibleProjects = computed(() => {
@@ -310,8 +279,7 @@ export function renameProject (id, name) {
   const p = getP(id)
   if (!p || !name || !name.trim()) return
   p.name = name.trim(); p.renamed = 1
-  store.tabs.forEach(t => { if (t.pid === id) t.title = p.name })
-  persist()
+  applyTabs(tabLifecycle.renameSync(tabModel(), id, p.name))
 }
 
 /* ---------- 选择目录（页面内设置 / 顶栏触发） ----------

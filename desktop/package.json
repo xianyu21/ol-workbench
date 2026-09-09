@@ -1,7 +1,7 @@
 {
   "name": "axhub-desktop",
-  "version": "1.0.19",
-  "description": "AxHub 原型工作台 · 桌面端（Electron 壳，复用本地 HTTP 服务 axhub-server.js + axhub-viewer.html）",
+  "version": "1.0.26",
+  "description": "AxHub 原型工作台 · 桌面端（Electron 壳，serve-core 挂 axhub:// 协议，零端口零依赖）",
   "main": "main.js",
   "author": "AxHub Viewer",
   "license": "MIT",
@@ -25,17 +25,12 @@
       "main.js",
       "preload.js",
       "picker.html",
-      "user-store.js"
+      "user-store.js",
+      "user-keys.js",
+      "serve-core.js",
+      "scan-shared.js"
     ],
     "extraResources": [
-      {
-        "from": "axhub-server.js",
-        "to": "axhub-server.js"
-      },
-      {
-        "from": "scan-shared.js",
-        "to": "scan-shared.js"
-      },
       {
         "from": "viewer-dist",
         "to": "viewer-dist"

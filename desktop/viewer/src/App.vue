@@ -4,7 +4,8 @@
       <!-- 顶栏 -->
       <header class="topbar">
         <div class="brand">
-          <span class="logo"><svg-icon name="layers" :size="16" /></span>
+          <button class="logo" :title="store.settings.collapsed ? '展开侧栏 (Ctrl+B)' : '收起侧栏 (Ctrl+B)'"
+            @click="toggleSidebar"><svg-icon name="layers" :size="16" /></button>
           <span>AxHub 原型工作台</span>
           <small>桌面版</small>
         </div>
@@ -56,8 +57,31 @@
       <BackupModal />
       <SettingsModal />
 
-      <!-- 关闭行为询问（Electron 点 X 且未记住选择时） -->
-      <a-modal :open="closeAsk" title="关闭 AxHub 原型工作台" :width="420" :closable="true"
+      <!-- 无 AxHub 目录引导弹窗：每次打开应用时若未关联目录都会弹出 -->
+      <a-modal :open="noDirTip" title="添加 AxHub 原型目录" :width="460" :closable="false"
+        :maskClosable="false" :keyboard="false" :footer="null" :zIndex="2000">
+        <div class="nodir">
+          <div class="nd-msg">工作台还没有关联 AxHub 导出目录，添加后即可在左侧浏览全部原型页面。</div>
+          <div class="nd-step"><b>添加入口：</b></div>
+          <ol class="nd-list">
+            <li>点击顶栏右侧的「<b>选择目录</b>」按钮；</li>
+            <li>或打开右上角「<svg-icon name="gear" :size="11" /> 设置」→ AxHub 目录 → 选择目录。</li>
+          </ol>
+          <div class="nd-tip">请选择 <b>AxHub / Axure 9 标准导出文件夹</b>（含 index.html 框架、多个 .html 页面及
+            resources / data 等共享目录）。工作台只读浏览，不会改动磁盘文件。</div>
+        </div>
+        <template #footer>
+          <div class="nd-btns">
+            <a-button @click="noDirTip = false">稍后再说</a-button>
+            <a-button type="primary" :loading="dirPicking" @click="pickNow">
+              <template #icon><svg-icon name="folder" :size="14" /></template>
+              选择目录
+            </a-button>
+          </div>
+        </template>
+      </a-modal>
+
+      <!-- 关闭行为询问（Electron 点 X 且未记住选择时） -->      <a-modal :open="closeAsk" title="关闭 AxHub 原型工作台" :width="420" :closable="true"
         :maskClosable="true" @cancel="closeAsk = false">
         <div class="close-ask">
           <div class="ca-q">要在后台继续运行，还是直接退出？</div>
@@ -132,6 +156,27 @@ function openNative () {
   message.success('已打开 AxHub 原生导航', 1.8)
 }
 
+/* 无 AxHub 目录引导弹窗：每次打开（重载/重启）时若仍未关联目录都弹出 */
+const noDirTip = ref(false)
+const dirPicking = ref(false)
+async function pickNow () {
+  dirPicking.value = true
+  try {
+    await selectDirectory() // 选择成功由主进程重载进工作台；取消则留在弹窗
+  } finally {
+    dirPicking.value = false
+  }
+}
+
+/* 顶栏 logo / Ctrl+B：收起 ↔ 展开。收起态恢复侧栏为固定宽度（见 Sidebar.restoreSidebar） */
+function toggleSidebar () {
+  if (store.settings.collapsed) {
+    window.dispatchEvent(new Event('ax-restore-sidebar'))
+    return
+  }
+  if (innerWidth > 860) { store.settings.collapsed = true; persist() }
+}
+
 /* ---------- 快捷键（与旧版一致） ---------- */
 function onKey (e) {
   const mod = e.ctrlKey || e.metaKey
@@ -139,7 +184,7 @@ function onKey (e) {
   if (mod && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); window.dispatchEvent(new Event('ax-focus-search')); return }
   if (mod && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); const t = store.tabs.filter(x => x.id === store.active)[0]; if (t) togglePin(t.id); return }
   if (mod && (e.key === 'r' || e.key === 'R')) { if (store.tabs.length) { e.preventDefault(); window.dispatchEvent(new Event('ax-reload-active')) } return }
-  if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); if (innerWidth > 860) { store.settings.collapsed = !store.settings.collapsed; persist() } return }
+  if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); toggleSidebar(); return }
   if (e.altKey && (e.key === 'w' || e.key === 'W')) { e.preventDefault(); if (store.active) closeTab(store.active); return }
   if (e.altKey && e.key >= '1' && e.key <= '9') { e.preventDefault(); const i = +e.key - 1; if (store.tabs[i]) setActive(store.tabs[i].id); return }
   if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -155,7 +200,10 @@ function onKey (e) {
 
 onMounted(() => {
   document.addEventListener('keydown', onKey)
-  fetchTree()
+  fetchTree().then(() => {
+    // 加载完成且未关联任何目录 → 弹出添加引导（每次都弹，直到关联目录）
+    if (!store.rootDir && !store.loadError) noDirTip.value = true
+  })
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 </script>
@@ -164,7 +212,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .shell{height:100%;display:flex;flex-direction:column}
 .topbar{flex:0 0 auto;height:50px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:var(--sh-1);position:relative;z-index:40}
 .brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:.2px;white-space:nowrap;color:var(--text)}
-.brand .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#1296db,#0d7cad);box-shadow:0 2px 8px rgba(18,150,219,.32)}
+.brand .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#1296db,#0d7cad);box-shadow:0 2px 8px rgba(18,150,219,.32);border:none;padding:0;cursor:pointer;transition:transform .12s,box-shadow .12s}
+.brand .logo:hover{transform:scale(1.08);box-shadow:0 3px 12px rgba(18,150,219,.45)}
+.brand .logo:active{transform:scale(.95)}
 .brand small{font-weight:500;color:var(--muted);font-size:11px;margin-left:2px}
 .hd-sp{flex:1 1 auto}
 .bkbar{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:6px 12px;font-size:12.5px;background:var(--warn-soft);border-bottom:1px solid #ffd9bd;color:#8a4b12}
@@ -180,4 +230,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .ca-btns{display:flex;gap:8px;justify-content:flex-end}
 .upd{padding-top:4px}
 .upd-hint{font-size:12.5px;color:var(--muted);margin-top:6px;text-align:center}
+.nodir{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+.nd-msg{font-size:13.5px;color:var(--text-2);line-height:1.7}
+.nd-step{font-size:13px;color:var(--text)}
+.nd-list{margin:0;padding-left:22px;font-size:13px;color:var(--text-2);line-height:2;display:flex;flex-direction:column;gap:2px}
+.nd-tip{font-size:12px;color:var(--muted);line-height:1.7;background:var(--panel-3);border-radius:8px;padding:10px 12px}
+.nd-btns{display:flex;gap:8px;justify-content:flex-end}
 </style>

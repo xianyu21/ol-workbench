@@ -31,6 +31,8 @@ import { ref } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import SvgIcon from '../SvgIcon.vue'
 import { store, persist, DEF_TAGS } from '../../store.js'
+import * as userData from '../../user-data.js'
+import * as library from '../../library.js'
 import { ui } from '../../ui.js'
 
 const fileRef = ref(null)
@@ -62,23 +64,11 @@ function doImport (d, mode) {
     store.recent = d.recent || []
     message.success('已覆盖导入', 2.6)
   } else {
-    const map = {}
-    store.projects.forEach(p => { map[p.id] = p })
-    let add = 0, mg = 0
-    d.projects.forEach(np => {
-      const old = map[np.id]
-      if (!old) { store.projects.push(np); add++ } else {
-        old.tags = Array.from(new Set((old.tags || []).concat(np.tags || [])))
-        if (np.cover && !old.cover) old.cover = np.cover
-        if (np.renamed) { old.name = np.name; old.renamed = 1 }
-        old.fav = old.fav || np.fav || 0
-        old.openCount = Math.max(old.openCount || 0, np.openCount || 0)
-        old.lastOpen = Math.max(old.lastOpen || 0, np.lastOpen || 0)
-        mg++
-      }
-    })
-    ;(d.tags || []).forEach(t => { if (!store.tags.some(x => x.name === t.name)) store.tags.push(t) })
-    message.success(`合并完成：新增 ${add}、更新 ${mg}`, 3)
+    // 合并规则（并集/取大/重命名优先）单源在 library.js，可独立单测
+    const r = library.mergeProjects(store.projects, d.projects)
+    store.projects = r.projects
+    store.tags = library.mergeTags(store.tags, d.tags || [])
+    message.success(`合并完成：新增 ${r.add}、更新 ${r.updated}`, 3)
   }
   persist()
 }
@@ -88,9 +78,7 @@ function clearAll () {
     content: `删除全部记录：${store.projects.length} 个页面列表项、${store.tags.length} 个标签、所有标签页布局。\n\n不删磁盘 AxHub 文件，重新扫描可恢复列表（但标签/收藏找不回）。`,
     okText: '确认清空', okType: 'danger', cancelText: '取消',
     onOk () {
-      Object.keys(localStorage).slice().forEach(k => { if (k.indexOf('wb_axhub_') === 0) localStorage.removeItem(k) })
-      // 桌面端同步清磁盘（否则重启后磁盘快照会把数据灌回来）
-      if (window.axhub && typeof window.axhub.clearUserData === 'function') window.axhub.clearUserData()
+      userData.clear() // 缓存与桌面端磁盘快照一并清（否则重启后快照会把数据灌回来）
       location.reload()
     }
   })
