@@ -1,6 +1,24 @@
 # Changelog
 
-## 未发布 (Unreleased)
+## v1.0.28 · 2026-09-09
+
+- 🐛 修复 macOS 发布资产名：productName 含中文导致上传截断（v1.0.27 资产变 `AxHub.-1.0.27.dmg`）；build.mac 显式 `artifactName: AxHub-mac-${version}`，dmg/zip 均为纯 ASCII 文件名
+- ✨ Release 正文自动取自 CHANGELOG 对应版本段（此前仅 GitHub 自动 commit 对比链接，无实质更新说明）
+- 🧹 Release 资产排除 builder-debug.yml（此前 `dist/**` 整目录上传带入调试文件）
+
+## v1.0.27 · 2026-09-09
+
+> 自 v1.0.14 起的累积版本（serve-core 重构 + 数据落盘 + UI/交互迭代 + 全平台打包），首次登 Release。
+
+- 🚀 **架构重构（零端口）**：静态服务核心抽为 serve-core.js 挂自定义协议 `axhub://`（origin 固定 `axhub://local`，localStorage 与端口彻底解耦）；桌面端全程不监听任何端口，本机其他进程无法再探测目录清单；页面清单改走 preload IPC；axhub-server.js 仅保留 CLI/HTTP 适配层（与桌面端同源）
+- 🔒 **数据与安全**：收藏/标签/最近访问/标签页布局/分组折叠落盘 userData 磁盘文件（换端口/清缓存/升级不丢），旧 localStorage 自动迁移；CORS 收紧；恢复默认 webSecurity；主进程日志超 1MB 自动轮转
+- ♻️ **可测性**：tabs 生命周期 / user-data 持久化 / 合并算法抽为纯函数 module（零 import），key 清单单源；node:test 测试基线 49 项
+- ✨ **UI/交互迭代**：最近访问分组（5 条置顶常驻）；侧栏拖拽调宽（100px~35%）+ 固定宽度恢复 + logo 切换（Ctrl+B）；「移除目录」与无目录引导弹窗；会话恢复懒加载；iframe JS 跳转标签联动
+- ⚡ **更新链路**：托盘后台运行 + 关闭行为三选项；更新下载页面内进度条；便携版升级指引；每 24h 静默检查；版本号单源
+- 🛠 修复 preload 沙箱导致 `window.axhub` 整桥缺失；electron-builder 打包配置合规化；CI 双平台出包（Windows NSIS/Portable + macOS dmg/zip，macos-14 runner）
+- 📦 打包与自动化：图标程序化生成（win ico / mac icns 同源）；push tag → 全自动正式 Release
+
+分版明细（v1.0.14–v1.0.21，随 v1.0.27 一并发布）：
 
 ### v1.0.21
 - ♻️ 标签页生命周期抽为纯函数 module（viewer/src/tabs.js，零 import）：开/关/钉/LRU 休眠/会话恢复/自导航重指向全部可 node:test 直测；「激活标签永不休眠」invariant 改由构造保证，ViewerPane 安全网 watcher 删除
