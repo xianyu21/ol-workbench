@@ -1,6 +1,6 @@
 {
   "name": "axhub-desktop",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "description": "AxHub 原型工作台 · 桌面端（Electron 壳，serve-core 挂 axhub:// 协议，零端口零依赖）",
   "main": "main.js",
   "author": "AxHub Viewer",
@@ -43,10 +43,16 @@
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "artifactName": "AxHub-Setup-${version}.${ext}" },
-        { "target": "portable", "artifactName": "AxHub-Portable-${version}.${ext}" }
+        "nsis",
+        "portable"
       ],
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "AxHub-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "AxHub-Portable-${version}.${ext}"
     },
     "publish": [
       {
