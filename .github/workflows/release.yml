@@ -1,7 +1,7 @@
 # Release 自动化：推送 v* tag 时构建 Windows / macOS 安装包并创建 Release 草稿。
 # 遵守项目"不自动发版"规则：只出草稿，正式发布由维护者确认后手动点击 Publish。
 # 手动触发（Actions → Release → Run workflow）：只构建并上传 artifact，不创建 Release，便于验包。
-# 注：macOS dmg 只能在 macOS runner 上构建（本 job 用 macos-13 Intel，产出 x64 包，Apple Silicon 可经 Rosetta 运行）。
+# 注：macOS dmg 只能在 macOS runner 上构建（macos-14 arm64 runner 交叉产出 x64 包，Intel 原生跑 / Apple Silicon 走 Rosetta）。
 name: Release
 
 on:
@@ -27,7 +27,7 @@ jobs:
           - os: windows-latest
             name: win
             target: --win
-          - os: macos-13
+          - os: macos-14
             name: mac-x64
             target: --mac --x64
     runs-on: ${{ matrix.os }}
