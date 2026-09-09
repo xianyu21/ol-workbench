@@ -85,6 +85,7 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.yml
             desktop/dist/*.dmg
+            desktop/dist/*.zip
           if-no-files-found: warn
 
   release:
