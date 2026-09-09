@@ -284,7 +284,10 @@ function createWindow() {
     title: 'AxHub 原型工作台',
     // webSecurity 保持默认开启：工作台与原型页同在 axhub://local 一个 origin 下，无需关闭。
     // 若个别导出确需跨域，由 serve-core 精确放行（/_axviewer 资源按需回显 Origin），不走全局关闭。
-    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false }
+    // sandbox:false：preload 需 require 本地模块（user-keys.js / user-store 桥），
+    // 沙箱化 preload 不支持相对 require（报 module not found → window.axhub 整个缺失）。
+    // 已全局 no-sandbox + contextIsolation 开启 + nodeIntegration 关闭 + 仅本地同源内容，风险可控。
+    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: false }
   });
   w.once('ready-to-show', () => w.show());
   w.on('close', (e) => handleClose(w, e));
