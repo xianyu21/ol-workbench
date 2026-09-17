@@ -35,5 +35,12 @@ contextBridge.exposeInMainWorld('axhub', {
   saveUserData: (data) => ipcRenderer.send('user-data:save', data),
   clearUserData: () => ipcRenderer.send('user-data:clear'),
   // 更新下载进度：主进程 download-progress → 页面内进度提示（null = 结束/失败）
-  onUpdateProgress: (cb) => { ipcRenderer.on('update:progress', (e, pct) => cb(pct)); }
+  onUpdateProgress: (cb) => { ipcRenderer.on('update:progress', (e, pct) => cb(pct)); },
+  // 后台静默下载：发现新版本（页面显示"后台下载中"）
+  onUpdateAvailable: (cb) => { ipcRenderer.on('update:available', (e, info) => cb(info)); },
+  // 后台静默下载完成：可立即重启安装，未操作则退出应用时自动安装
+  onUpdateReady: (cb) => { ipcRenderer.on('update:ready', (e, info) => cb(info)); },
+  installUpdate: () => ipcRenderer.send('update:install'),
+  // 后台静默下载开关（设置页切换后落盘，即时生效）
+  setSilentUpdate: (on) => ipcRenderer.send('update:set-silent', on)
 });

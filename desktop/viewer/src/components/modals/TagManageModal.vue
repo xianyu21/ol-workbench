@@ -87,7 +87,7 @@ function addTag () {
 .lbl{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
 .tglist{display:flex;flex-direction:column;gap:6px}
 .tgrow{display:flex;align-items:center;gap:8px;padding:4px 9px;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--r-sm)}
-.tgrow .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;cursor:pointer;box-shadow:0 0 0 2px #fff,0 0 0 3px var(--border)}
+.tgrow .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;cursor:pointer;box-shadow:0 0 0 2px var(--panel),0 0 0 3px var(--border)}
 .tgrow .cnt{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .empty-sm{padding:14px;text-align:center;color:var(--muted);font-size:13px}
 </style>

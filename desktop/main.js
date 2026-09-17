@@ -82,11 +82,19 @@ app.commandLine.appendSwitch('disable-crash-reporter');
 app.commandLine.appendSwitch('disable-crashpad');
 
 // ---------- 在线更新 ----------
-// 发布源在 package.json build.publish 配置（generic provider，指向存放 latest.yml + exe 的目录）。
+// 发布源在 package.json build.publish 配置（github provider，指向 Releases）。
 // 未签名应用：win 仅 NSIS 安装版支持自动更新，portable 版需重新下载。
+// 默认「后台静默下载」：发现新版本即自动下载安装包，不弹询问、不打断使用；
+// 下载完成后提示可立即重启（未操作则退出应用时自动安装）。设置里可关闭该行为，回到下载前询问。
+// 渲染层消息（窗口可能未创建/已销毁，静默失败）
+function sendToWin (channel, payload) {
+  try { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); } catch (e) { /* ignore */ }
+}
+
 function setupAutoUpdater() {
   autoUpdater.logger = { info: log, warn: log, error: log, debug: () => {} };
-  autoUpdater.autoDownload = false; // 下载前询问用户
+  autoUpdater.autoDownload = loadConfig().silentUpdate !== false; // 后台静默下载（默认开启）
+  autoUpdater.autoInstallOnAppQuit = true;                        // 已下载的更新在退出应用时自动安装
 
   let downloading = false;
 
@@ -109,6 +117,21 @@ function setupAutoUpdater() {
       if (r.response === 0) shell.openExternal(RELEASES_URL).catch(() => {});
       return;
     }
+    if (autoUpdater.autoDownload) {
+      // 静默分支：后台直接下载，页面角落显示进度，不弹窗、不改窗口标题
+      if (downloading) return;
+      downloading = true;
+      sendToWin('update:available', { version: info.version });
+      try {
+        await autoUpdater.downloadUpdate(); // 完成后由 update-downloaded 事件接管
+      } catch (e) {
+        downloading = false;
+        log('silent download error:', e && e.message);
+        sendToWin('update:progress', null);
+      }
+      return;
+    }
+    // 非静默分支（设置里关掉「后台静默下载」）：下载前询问
     const detail = notes ? `更新内容：\n\n${notes}\n\n` : '';
     const r = await dialog.showMessageBox(win, {
       type: 'info',
@@ -130,26 +153,25 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('download-progress', (p) => {
-    if (win && p && p.percent != null) {
-      win.setTitle(`AxHub 原型工作台 · 正在下载更新 ${Math.round(p.percent)}%`);
-      // 页面内进度提示（窗口标题太容易被忽略）
-      try { win.webContents.send('update:progress', Math.round(p.percent)); } catch (e) {}
-    }
+    if (!win || !p || p.percent == null) return;
+    // 静默模式不改窗口标题（避免打扰），仅在页面角落显示进度
+    if (!autoUpdater.autoDownload) win.setTitle(`AxHub 原型工作台 · 正在下载更新 ${Math.round(p.percent)}%`);
+    sendToWin('update:progress', Math.round(p.percent));
   });
 
-  autoUpdater.on('update-downloaded', async () => {
+  autoUpdater.on('update-downloaded', (info) => {
+    downloading = false;
     if (win) win.setTitle('AxHub 原型工作台');
-    log('update downloaded, quitAndInstall');
-    quitting = true; // 放行窗口 close，避免被关闭询问拦截
-    try { await autoUpdater.quitAndInstall(false, true); } catch (e) { log('install error:', e && e.message); }
+    log('update downloaded:', info && info.version, '（退出应用时自动安装）');
+    // 不强制重启（避免打断正在进行的浏览）：提示可立即重启，未操作则退出应用时自动安装
+    sendToWin('update:progress', null);
+    sendToWin('update:ready', { version: (info && info.version) || '' });
   });
 
   autoUpdater.on('error', (e) => {
     downloading = false;
-    if (win) {
-      win.setTitle('AxHub 原型工作台');
-      try { win.webContents.send('update:progress', null); } catch (e2) {}
-    }
+    if (win) win.setTitle('AxHub 原型工作台');
+    sendToWin('update:progress', null);
     // 静默：无网络/无更新源时只在日志记录
     log('autoUpdater error:', e && e.message);
   });
@@ -380,6 +402,21 @@ ipcMain.handle('update:check', async () => {
     log('manual check error:', e && e.message);
     return { ok: false, error: (e && e.message || String(e)).split('\n')[0].slice(0, 160) };
   }
+});
+
+// 更新已后台下载完成 → 页面点「立即重启安装」时执行（未点则退出应用时自动安装）
+ipcMain.on('update:install', () => {
+  log('update:install, quitAndInstall');
+  quitting = true; // 放行窗口 close，避免被关闭询问/托盘拦截
+  try { autoUpdater.quitAndInstall(false, true); } catch (e) { log('install error:', e && e.message); }
+});
+
+// 设置页「后台静默下载」开关：落盘并即时生效（关闭则回到下载前询问）
+ipcMain.on('update:set-silent', (e, on) => {
+  const enabled = !!on;
+  autoUpdater.autoDownload = enabled;
+  saveConfig({ silentUpdate: enabled });
+  log('silent update:', enabled);
 });
 
 // ---------- 生命周期 ----------

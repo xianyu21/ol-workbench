@@ -1,64 +1,160 @@
 <template>
-  <div class="viewport">
-    <!-- 初始加载 / 连接失败 / 空状态 -->
-    <div v-if="showBoot" class="loading-box">
-      <div class="lb">
-        <template v-if="store.loadError">
-          <h2>{{ store.loadError }}</h2>
-          <p class="sub">请确认本地服务已启动，且本页面是通过工作台窗口打开的。</p>
-        </template>
-        <template v-else-if="store.loaded">
-          <h2>已读取「{{ store.rootName }}」</h2>
-          <p class="sub">
-            共 {{ store.projects.length }} 个页面。左侧按模块分组，点击任一页面即可在右侧预览。
-          </p>
-          <div class="note">
-            <svg-icon name="info" :size="15" />
-            <div>想用 AxHub 自带导航（左侧页面树 + 顶部工具栏）？点右上角「AxHub 导航」，会加载原生 index.html。本工作台额外提供多标签快速切换、搜索、标签分类。</div>
-          </div>
-        </template>
-        <template v-else>
-          <h2>正在连接本地服务…</h2>
-          <p class="sub">同源加载 AxHub 导出数据，稍候。</p>
-        </template>
-      </div>
+  <div class="vp-root">
+    <!-- 面包屑：当前页面所在位置（项目 › 模块 › 页面），右侧可一键在侧栏定位 -->
+    <div v-if="activeTab && !showBoot" class="crumbbar">
+      <template v-for="(c, i) in crumbs" :key="i">
+        <span v-if="i" class="cr-sep">›</span>
+        <span class="cr-item" :class="{ last: i === crumbs.length - 1 }" :title="c">{{ c }}</span>
+      </template>
+      <span class="cr-sp" />
+      <button class="cr-loc" title="在侧栏中定位 (展开侧栏并滚动到当前页)" @click="locateInSidebar">
+        <svg-icon name="chev" :size="13" class="cr-loc-ic" />
+      </button>
     </div>
 
-    <!-- 需求2：iframe 同源加载；onload 后 bindFrameLinks 拦截页内链接联动 tab 栏 -->
-    <div v-for="t in aliveTabs" :key="t.id + ':' + (t.rc || 0)" class="fwrap" :class="{ on: t.id === store.active }">
-      <div v-if="t.loading" class="fload">
-        <div class="txt">
-          <div class="spin" />
-          <b>正在加载「{{ titleOf(t) }}」</b>
-          <div>首次加载后常驻内存，切换瞬间完成</div>
-          <div class="path">{{ srcOf(getP(t.pid) || {}) }}</div>
+    <div class="viewport">
+      <!-- 初始加载 / 连接失败 / 空状态 -->
+      <div v-if="showBoot" class="loading-box">
+        <div class="lb">
+          <template v-if="store.loadError">
+            <h2>{{ store.loadError }}</h2>
+            <p class="sub">请确认本地服务已启动，且本页面是通过工作台窗口打开的。</p>
+          </template>
+          <template v-else-if="store.loaded">
+            <h2>已读取「{{ store.rootName }}」</h2>
+            <p class="sub">
+              共 {{ store.projects.length }} 个页面。左侧按模块分组，点击任一页面即可在右侧预览。
+            </p>
+            <div class="note">
+              <svg-icon name="info" :size="15" />
+              <div>想用 AxHub 自带导航（左侧页面树 + 顶部工具栏）？点右上角「AxHub 导航」，会加载原生 index.html。本工作台额外提供多标签快速切换、搜索、标签分类。</div>
+            </div>
+          </template>
+          <template v-else>
+            <h2>正在连接本地服务…</h2>
+            <p class="sub">同源加载 AxHub 导出数据，稍候。</p>
+          </template>
         </div>
       </div>
-      <iframe :src="frameSrc(t)" :title="titleOf(t)" allowfullscreen
-        @load="onFrameLoad($event, t)" />
-    </div>
 
-    <!-- 休眠唤醒 -->
-    <div v-if="sleepActive" class="wake">
-      <div class="txt">
-        <svg-icon name="box" :size="26" />
-        <b>「{{ titleOf(sleepActive) }}」已休眠</b>
-        <a-button type="primary" @click="wakeTab(sleepActive.id)">重新加载</a-button>
+      <!-- 需求2：iframe 同源加载；onload 后 bindFrameLinks 拦截页内链接联动 tab 栏 -->
+      <div v-for="t in aliveTabs" :key="t.id + ':' + (t.rc || 0)" class="fwrap"
+        :class="{ on: t.id === store.active, zoomed: effScale !== 1 }">
+        <div v-if="t.loading" class="fload">
+          <div class="txt">
+            <div class="spin" />
+            <b>正在加载「{{ titleOf(t) }}」</b>
+            <div>首次加载后常驻内存，切换瞬间完成</div>
+            <div class="path">{{ srcOf(getP(t.pid) || {}) }}</div>
+          </div>
+        </div>
+        <iframe :src="frameSrc(t)" :title="titleOf(t)" allowfullscreen :style="frameStyle"
+          @load="onFrameLoad($event, t)" />
+      </div>
+
+      <!-- 休眠唤醒 -->
+      <div v-if="sleepActive" class="wake">
+        <div class="txt">
+          <svg-icon name="box" :size="26" />
+          <b>「{{ titleOf(sleepActive) }}」已休眠</b>
+          <a-button type="primary" @click="wakeTab(sleepActive.id)">重新加载</a-button>
+        </div>
+      </div>
+
+      <!-- 缩放工具条：浮动在预览区右下角 -->
+      <div v-if="activeTab && !showBoot" class="zoombar">
+        <button v-for="z in ZOOMS" :key="z.v" class="zb-btn" :class="{ on: zoom === z.v }"
+          :title="z.label" @click="setZoom(z.v)">{{ z.text }}</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import SvgIcon from './SvgIcon.vue'
 import {
   store, getP, srcOf, openProject, activeTab,
   wakeTab, sweepLru, restoreSessionTabs, markLoaded, retargetTab
 } from '../store.js'
 import { matchPageByUrl } from '../tabs.js'
+import * as userData from '../user-data.js'
 
 const titleOf = t => { const p = getP(t.pid); return (p && p.name) || t.title }
+
+/* ---------- 面包屑：项目 › 模块 › 页面 ---------- */
+const crumbs = computed(() => {
+  const t = activeTab.value
+  if (!t) return []
+  const p = getP(t.pid)
+  if (!p) return []
+  const arr = []
+  if (!p.native && store.rootName) arr.push(store.rootName)
+  if (p.group) arr.push(p.group)
+  arr.push(p.name)
+  return arr
+})
+
+/* 在侧栏中定位：侧栏收起时先展开（restoreSidebar 会恢复固定宽度），再滚动到当前项 */
+function locateInSidebar () {
+  if (store.settings.collapsed) window.dispatchEvent(new Event('ax-restore-sidebar'))
+  // active 未变时 Sidebar 的 watch 不触发，这里显式发定位事件
+  window.dispatchEvent(new Event('ax-locate-sidebar'))
+}
+
+/* ---------- 预览缩放：transform scale 实现，'fit' 按内容自然宽度适应容器 ---------- */
+const ZOOMS = [
+  { v: 0.5, text: '50%', label: '缩放 50%' },
+  { v: 0.75, text: '75%', label: '缩放 75%' },
+  { v: 1, text: '100%', label: '缩放 100%' },
+  { v: 'fit', text: '适应', label: '适应宽度（按页面自然宽度缩放）' }
+]
+const zoom = ref(userData.get('zoom', 1))
+function setZoom (v) {
+  zoom.value = v
+  userData.set('zoom', v) // set 内部已触发防抖落盘
+  if (v === 'fit') nextTick(measureFit)
+}
+
+/* fit：读取激活 iframe 内容的自然宽度（Axure 页面通常是固定宽），缩放比 = 容器宽 / 自然宽 */
+const fitScale = ref(1)
+function measureFit () {
+  if (zoom.value !== 'fit') return
+  const wrap = document.querySelector('.fwrap.on')
+  const f = wrap && wrap.querySelector('iframe')
+  if (!wrap || !f) { fitScale.value = 1; return }
+  let naturalW = 0
+  try {
+    const doc = f.contentDocument
+    if (doc && doc.documentElement) {
+      naturalW = Math.max(doc.documentElement.scrollWidth, doc.body ? doc.body.scrollWidth : 0)
+    }
+  } catch (e) { naturalW = 0 } // 跨域等场景放弃适应
+  const cw = wrap.clientWidth
+  fitScale.value = naturalW > 0 && cw > 0 && naturalW > cw
+    ? Math.max(0.25, Math.min(1, Math.round((cw / naturalW) * 100) / 100))
+    : 1
+}
+
+const effScale = computed(() => (zoom.value === 'fit' ? fitScale.value : +zoom.value) || 1)
+
+/* iframe 缩放样式：先放大布局尺寸再 scale 缩回，超出部分由 .fwrap.on.zoomed 滚动 */
+const frameStyle = computed(() => {
+  const s = effScale.value
+  if (s === 1) return null
+  return {
+    width: (100 / s) + '%',
+    height: (100 / s) + '%',
+    transform: 'scale(' + s + ')',
+    transformOrigin: '0 0'
+  }
+})
+
+/* fit 相关的重算时机：窗口缩放 / 切换标签 */
+function onWinResize () { measureFit() }
+onMounted(() => window.addEventListener('resize', onWinResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onWinResize))
+watch(() => store.active, () => nextTick(() => setTimeout(measureFit, 200)))
 
 /* iframe 实际加载地址：优先用 t.src 快照（iframe 自导航重指向标签时保持快照不变，
  * 避免 src 属性变化触发二次加载），常规创建/唤醒/刷新时为空 → 回退到当前 pid 计算值 */
@@ -81,6 +177,7 @@ function onFrameLoad (e, t) {
     if (doc && doc.querySelectorAll) bindFrameLinks(e.target, doc)
     syncSelfNav(e.target, t)
   } catch (err) { /* 跨域等场景忽略 */ }
+  if (zoom.value === 'fit' && t.id === store.active) setTimeout(measureFit, 150)
 }
 
 /* iframe 自行跳转（Axure 式 JS location 跳转 / meta refresh / 表单）：
@@ -125,10 +222,21 @@ onMounted(() => { restoreSessionTabs() })
 </script>
 
 <style scoped>
+.vp-root{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0}
+/* 面包屑条 */
+.crumbbar{flex:0 0 auto;height:28px;display:flex;align-items:center;gap:7px;padding:0 12px;font-size:12px;background:var(--panel-2);border-bottom:1px solid var(--border-2);color:var(--muted);min-width:0}
+.cr-item{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cr-item.last{color:var(--text);font-weight:600}
+.cr-sep{color:var(--muted);opacity:.7;flex:0 0 auto}
+.cr-sp{flex:1 1 auto}
+.cr-loc{flex:0 0 auto;width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--muted);background:none;border:none;cursor:pointer}
+.cr-loc:hover{background:var(--hover);color:var(--primary)}
+.cr-loc-ic{transform:rotate(-90deg)}
 .viewport{flex:1 1 auto;position:relative;min-height:0;background:var(--bg);overflow:hidden}
-.fwrap{position:absolute;inset:0;display:none;background:#fff}
+.fwrap{position:absolute;inset:0;display:none;background:var(--frame-bg)}
 .fwrap.on{display:block}
-.fwrap iframe{width:100%;height:100%;border:0;display:block;background:#fff}
+.fwrap.on.zoomed{overflow:auto;background:var(--bg)}  /* 缩放后周围露出工作台底色并允许滚动 */
+.fwrap iframe{width:100%;height:100%;border:0;display:block;background:var(--frame-bg)}
 .fload{position:absolute;inset:0;display:grid;place-items:center;background:var(--panel);z-index:5;transition:opacity .2s}
 .spin{width:26px;height:26px;border:2.5px solid var(--primary-soft-2);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;margin:0 auto 10px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -143,6 +251,11 @@ onMounted(() => { restoreSessionTabs() })
 .lb{max-width:520px;width:100%}
 .lb h2{margin:0 0 6px;font-size:19px;font-weight:700;color:var(--text)}
 .lb .sub{color:var(--text-2);margin:0 0 16px;font-size:13.5px;line-height:1.7}
-.note{display:flex;gap:9px;padding:11px 13px;background:var(--warn-soft);border:1px solid #ffd9bd;border-radius:var(--r);font-size:12.5px;color:#8a4b12;line-height:1.65}
+.note{display:flex;gap:9px;padding:11px 13px;background:var(--warn-soft);border:1px solid var(--warn-border);border-radius:var(--r);font-size:12.5px;color:var(--warn-text);line-height:1.65}
 .note svg{flex:0 0 auto;color:var(--warn);margin-top:2px}
+/* 缩放工具条：右下角浮动胶囊 */
+.zoombar{position:absolute;right:14px;bottom:14px;z-index:7;display:flex;gap:1px;padding:3px;border-radius:9px;background:var(--panel);border:1px solid var(--border);box-shadow:var(--sh-2)}
+.zb-btn{height:24px;padding:0 9px;border-radius:6px;font-size:11.5px;color:var(--text-2);background:none;border:none;cursor:pointer;white-space:nowrap}
+.zb-btn:hover{background:var(--hover);color:var(--text)}
+.zb-btn.on{background:var(--primary-soft);color:var(--primary-2);font-weight:650}
 </style>

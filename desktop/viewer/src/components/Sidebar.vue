@@ -88,9 +88,23 @@ function toggleFilter (key) {
   else store.filterTags.push(key)
 }
 
+/* 面包屑「定位」按钮：显式滚动到当前激活页（active 未变时下面 watch 不触发） */
+function locateActive () {
+  const t = store.tabs.filter(x => x.id === store.active)[0]
+  if (!t) return
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      if (!scrollRef.value) return
+      const el = scrollRef.value.querySelector(`.item[data-p="${t.pid}"]`)
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' })
+    })
+  })
+}
+
 function focusSearch () { if (qRef.value) qRef.value.focus() }
 onMounted(() => {
   window.addEventListener('ax-focus-search', focusSearch)
+  window.addEventListener('ax-locate-sidebar', locateActive)
   window.addEventListener('resize', clampOnResize)
   window.addEventListener('ax-restore-sidebar', restoreSidebar)
   window.addEventListener('mouseup', endResize)   // 遮罩外的兜底结束（窗口外松键等）
@@ -98,6 +112,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('ax-focus-search', focusSearch)
+  window.removeEventListener('ax-locate-sidebar', locateActive)
   window.removeEventListener('resize', clampOnResize)
   window.removeEventListener('ax-restore-sidebar', restoreSidebar)
   window.removeEventListener('mouseup', endResize)
@@ -165,11 +180,11 @@ watch(() => store.active, () => {
 .sb-top{padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border-2)}
 .sb-all{display:flex;gap:6px}
 .sb-all .mini{display:inline-flex;align-items:center;gap:4px;flex:1 1 0;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
-.sb-all .mini:hover{background:#e8ecf1;color:var(--primary)}
+.sb-all .mini:hover{background:var(--hover);color:var(--primary)}
 .sb-all .mini .up{transform:rotate(180deg)}
 .tagbar{display:flex;flex-wrap:wrap;gap:5px;max-height:88px;overflow:auto}
 .chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:20px;font-size:12px;background:var(--panel-3);color:var(--text-2);border:1px solid transparent;cursor:pointer}
-.chip:hover{background:#e8ecf1}
+.chip:hover{background:var(--hover)}
 .chip.on{background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary-soft-2);font-weight:600}
 .chip .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
 .chip .n{color:var(--muted);font-size:11px}
@@ -177,6 +192,6 @@ watch(() => store.active, () => {
 .chip.clear{color:var(--danger)}
 .sb-scroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:6px 8px 20px}
 .empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
-.empty svg{color:#c3ccd7;margin-bottom:8px}
+.empty svg{color:var(--empty-ico);margin-bottom:8px}
 .empty b{color:var(--text-2);display:block;margin-bottom:4px;font-size:13.5px}
 </style>

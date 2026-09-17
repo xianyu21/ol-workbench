@@ -30,7 +30,18 @@
       <a-slider v-model:value="st.maxAlive" :min="2" :max="24" :marks="{ 2: '2', 8: '8', 16: '16', 24: '24' }" />
       <div class="hint">已加载页面常驻内存，切换零延迟。超量时最久未用的<b>未固定</b>标签释放（固定的不释放）。体积大就调小。</div>
     </div>
-    <div class="rowsp" style="margin-top:10px">
+    <div class="rowsp">
+      <div>
+        <b>界面主题</b>
+        <div class="hint">深色模式夜间看原型不刺眼；跟随系统随 OS 自动切换</div>
+      </div>
+      <a-radio-group :value="themeState.pref" size="small" @change="e => setTheme(e.target.value)">
+        <a-radio-button value="auto">跟随系统</a-radio-button>
+        <a-radio-button value="light">浅色</a-radio-button>
+        <a-radio-button value="dark">深色</a-radio-button>
+      </a-radio-group>
+    </div>
+    <div class="rowsp">
       <div>
         <b>点击关闭按钮时</b>
         <div class="hint">选后台运行会最小化到系统托盘，可从托盘退出</div>
@@ -47,6 +58,13 @@
         <div class="hint">当前版本 v{{ appVersion }}<template v-if="lastCheck"> · 上次检查 {{ lastCheck }}</template></div>
       </div>
       <a-button :loading="checking" @click="checkUpdate">检查更新</a-button>
+    </div>
+    <div class="rowsp">
+      <div>
+        <b>后台静默下载更新</b>
+        <div class="hint">发现新版本后在后台自动下载安装包，不弹窗、不打断使用；下载完成后可立即重启，未操作则退出应用时自动安装</div>
+      </div>
+      <a-switch v-model:checked="st.silentUpdate" @change="saveSilent" />
     </div>
     <a-collapse style="margin-top:8px">
       <a-collapse-panel key="kb" header="快捷键">
@@ -74,6 +92,7 @@ import { Modal, message } from 'ant-design-vue'
 import { store, persist, selectDirectory } from '../../store.js'
 import { ui } from '../../ui.js'
 import * as userData from '../../user-data.js'
+import { state as themeState, setTheme } from '../../theme.js'
 import SvgIcon from '../SvgIcon.vue'
 
 const st = store.settings
@@ -94,8 +113,10 @@ async function checkUpdate () {
     lastCheck.value = new Date().toLocaleTimeString()
     if (!r || !r.ok) { message.error(r && r.error || '检查更新失败'); return }
     if (r.available) {
-      // 主进程已弹窗展示更新内容；便携版弹窗提供 Releases 指引
-      message.info(r.portable ? `发现新版本 v${r.version}，便携版请到 Releases 页面重新下载` : `发现新版本 v${r.version}，请在弹窗中确认下载`)
+      // 静默模式主进程已自动开始后台下载；非静默则由主进程弹窗询问；便携版给 Releases 指引
+      message.info(r.portable
+        ? `发现新版本 v${r.version}，便携版请到 Releases 页面重新下载`
+        : st.silentUpdate ? `发现新版本 v${r.version}，已在后台开始下载` : `发现新版本 v${r.version}，请在弹窗中确认下载`)
     } else {
       message.success(`已是最新版本（v${appVersion.value}）`)
     }
@@ -127,6 +148,12 @@ function saveClose () {
   persist()
   window.axhub?.saveCloseAction(st.closeAction || '')
   message.info(st.closeAction === 'background' ? '以后点击关闭将最小化到托盘' : st.closeAction === 'exit' ? '以后点击关闭将直接退出' : '以后点击关闭会再次询问')
+}
+/* 后台静默下载开关：即时生效（主进程读同一份配置），并落盘 */
+function saveSilent () {
+  persist()
+  window.axhub?.setSilentUpdate?.(!!st.silentUpdate)
+  message.info(st.silentUpdate ? '发现新版本将后台静默下载' : '发现新版本时会先询问是否下载')
 }
 function ok () {
   st.maxAlive = Math.max(2, Math.min(24, +st.maxAlive || 8))

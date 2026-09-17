@@ -1,5 +1,5 @@
 <template>
-  <a-config-provider :theme="theme" :locale="zhCN">
+  <a-config-provider :theme="themeCfg" :locale="zhCN">
     <div class="shell">
       <!-- 顶栏 -->
       <header class="topbar">
@@ -100,21 +100,26 @@
         </template>
       </a-modal>
 
-      <!-- 更新下载进度（主进程 download-progress → 页面内提示；null = 结束/失败/进入安装） -->
-      <a-modal :open="updatePct !== null" title="正在下载更新" :width="360" :closable="false"
-        :maskClosable="false" :keyboard="false" :footer="null">
-        <div class="upd">
-          <a-progress :percent="updatePct" status="active" />
-          <div class="upd-hint">下载完成后会询问安装，请稍候…</div>
-        </div>
-      </a-modal>
+      <!-- 后台静默下载：右下角非模态进度提示（不遮挡、不打断操作） -->
+      <div v-if="updatePct !== null" class="upd-toast">
+        <a-progress :percent="updatePct" size="small" status="active" :show-info="false" />
+        <div class="ut-txt">正在后台下载更新<template v-if="updateVer"> v{{ updateVer }}</template> · {{ updatePct }}%</div>
+      </div>
+
+      <!-- 更新已就绪：可立即重启安装，未操作则退出应用时自动安装 -->
+      <div v-if="updateReady" class="upd-ready">
+        <svg-icon name="box" :size="15" />
+        <span class="ur-txt">新版本<template v-if="readyVer"> v{{ readyVer }}</template> 已下载完成，重启后生效</span>
+        <a-button type="primary" size="small" @click="installNow">立即重启安装</a-button>
+        <a-button size="small" type="text" @click="updateReady = false">稍后</a-button>
+      </div>
     </div>
   </a-config-provider>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { message } from 'ant-design-vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { message, theme as antdTheme } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import SvgIcon from './components/SvgIcon.vue'
 import ContextMenu from './components/ContextMenu.vue'
@@ -128,8 +133,14 @@ import BackupModal from './components/modals/BackupModal.vue'
 import SettingsModal from './components/modals/SettingsModal.vue'
 import { store, persist, fetchTree, openProject, setActive, closeTab, togglePin, selectDirectory, NATIVE_ID } from './store.js'
 import { ui } from './ui.js'
+import { isDark } from './theme.js'
 
-const theme = { token: { colorPrimary: '#1296db', colorInfo: '#1296db', borderRadius: 7, fontFamily: 'var(--font)' } }
+/* antd 主题 token：跟随 theme.js 的 isDark 切换 darkAlgorithm */
+const tokens = { colorPrimary: '#1296db', colorInfo: '#1296db', borderRadius: 7, fontFamily: 'var(--font)' }
+const themeCfg = computed(() => isDark.value
+  ? { algorithm: antdTheme.darkAlgorithm, token: tokens }
+  : { token: tokens }
+)
 
 /* ---------- 关闭行为询问（主进程 → preload → 此处弹 antd Modal） ---------- */
 const closeAsk = ref(false)
@@ -140,9 +151,22 @@ function applyClose (action) {
 }
 onMounted(() => { window.axhub?.onCloseActionRequest(() => { closeAsk.value = true }) })
 
-/* ---------- 更新下载进度（主进程 → preload → 页面内进度条） ---------- */
-const updatePct = ref(null)
-onMounted(() => { window.axhub?.onUpdateProgress?.(pct => { updatePct.value = pct }) })
+/* ---------- 更新：后台静默下载（主进程 → preload → 页内非模态提示） ---------- */
+const updatePct = ref(null)   // null = 未在下载
+const updateVer = ref('')
+const readyVer = ref('')
+const updateReady = ref(false)
+function installNow () { window.axhub?.installUpdate?.() }
+onMounted(() => {
+  window.axhub?.onUpdateProgress?.(pct => { updatePct.value = pct })
+  window.axhub?.onUpdateAvailable?.(info => { updateVer.value = (info && info.version) || '' })
+  // 下载完成：提示立即重启；不点则退出应用时自动安装（主进程 autoInstallOnAppQuit）
+  window.axhub?.onUpdateReady?.(info => {
+    updateReady.value = true
+    readyVer.value = (info && info.version) || updateVer.value
+    updatePct.value = null
+  })
+})
 
 function rescan () {
   message.info('正在重新扫描目录…', 1.5)
@@ -217,7 +241,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .brand .logo:active{transform:scale(.95)}
 .brand small{font-weight:500;color:var(--muted);font-size:11px;margin-left:2px}
 .hd-sp{flex:1 1 auto}
-.bkbar{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:6px 12px;font-size:12.5px;background:var(--warn-soft);border-bottom:1px solid #ffd9bd;color:#8a4b12}
+.bkbar{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:6px 12px;font-size:12.5px;background:var(--warn-soft);border-bottom:1px solid var(--warn-border);color:var(--warn-text)}
 .bkbar .sp{flex:1 1 auto}
 .emptybar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px;background:var(--panel-3);border-bottom:1px solid var(--border);color:var(--text-2)}
 .emptybar .sp{flex:1 1 auto}
@@ -228,8 +252,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .ca-q{font-size:14px;font-weight:600;color:var(--text)}
 .ca-hint{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:2px}
 .ca-btns{display:flex;gap:8px;justify-content:flex-end}
-.upd{padding-top:4px}
-.upd-hint{font-size:12.5px;color:var(--muted);margin-top:6px;text-align:center}
+/* 后台静默下载：右下角非模态小卡（不遮挡、不拦截操作） */
+.upd-toast{position:fixed;right:16px;bottom:16px;z-index:1500;width:260px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--border);box-shadow:var(--sh-2,0 6px 20px rgba(0,0,0,.12))}
+.ut-txt{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+/* 更新已就绪：底部提示条（可立即重启，或退出时自动安装） */
+.upd-ready{position:fixed;right:16px;bottom:16px;z-index:1500;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--border);box-shadow:var(--sh-2,0 6px 20px rgba(0,0,0,.12));color:var(--text)}
+.upd-ready .ur-txt{font-size:12.5px;color:var(--text-2)}
 .nodir{display:flex;flex-direction:column;gap:10px;padding-top:4px}
 .nd-msg{font-size:13.5px;color:var(--text-2);line-height:1.7}
 .nd-step{font-size:13px;color:var(--text)}

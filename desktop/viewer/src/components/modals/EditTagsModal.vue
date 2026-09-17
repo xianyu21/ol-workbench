@@ -62,6 +62,6 @@ function ok () {
 .hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.6}
 .pickwrap{display:flex;flex-wrap:wrap;gap:6px}
 .pick{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:20px;font-size:12.5px;background:var(--panel-3);color:var(--text-2);border:1.5px solid transparent;cursor:pointer}
-.pick.on{background:#fff;border-color:currentColor;font-weight:600}
+.pick.on{background:var(--panel);border-color:currentColor;font-weight:600}
 .pick .dot{width:8px;height:8px;border-radius:50%}
 </style>

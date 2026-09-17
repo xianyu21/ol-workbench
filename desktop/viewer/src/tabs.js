@@ -110,6 +110,22 @@ export function togglePin (model, id) {
   return { tabs: flipped.filter(t => t.pinned).concat(flipped.filter(t => !t.pinned)) }
 }
 
+/* 拖拽排序：把 dragId 移动到 targetId 的位置（前/后由原相对位置决定）。
+ * 约束：固定组与未固定组不混排（跨组拖拽忽略），与 togglePin 的「固定在前」排序不变式一致。 */
+export function reorder (model, dragId, targetId) {
+  if (dragId === targetId) return null
+  const from = model.tabs.findIndex(t => t.id === dragId)
+  const to = model.tabs.findIndex(t => t.id === targetId)
+  if (from < 0 || to < 0) return null
+  if (!!model.tabs[from].pinned !== !!model.tabs[to].pinned) return null
+  const tabs = model.tabs.slice()
+  const moved = tabs.splice(from, 1)[0]
+  // 删除后重算目标下标：from < to 时目标左移一格，移到其后；否则插到其前
+  const idx = tabs.findIndex(t => t.id === targetId)
+  tabs.splice(from < to ? idx + 1 : idx, 0, moved)
+  return { tabs }
+}
+
 /* 刷新：rc 递增（ViewerPane 以 :key 含 rc 重建 iframe）、清 src 快照、置 loading */
 export function reload (model, id) {
   const tabs = mapById(model.tabs, id, t => patch(t, { rc: (t.rc || 0) + 1, loading: true, src: undefined }))

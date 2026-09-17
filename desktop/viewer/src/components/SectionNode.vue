@@ -134,7 +134,7 @@ function confirmRemove (p) {
 .item.active .it-name{color:var(--primary-2);font-weight:650}
 .it-body{flex:1 1 auto;min-width:0}
 .it-name{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
-.it-name mark{background:#ffe58f;color:#1f2b3d;border-radius:2px;padding:0 1px}
+.it-name mark{background:var(--mark-bg-2);color:var(--mark-text);border-radius:2px;padding:0 1px}
 .fav-star{color:var(--warn)}
 .badge-ax{font-size:10px;font-weight:600;color:var(--primary-2);background:var(--primary-soft);padding:0 5px;border-radius:4px;flex:0 0 auto}
 .it-meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;margin-top:1px}

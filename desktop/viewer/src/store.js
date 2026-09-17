@@ -31,7 +31,7 @@ export const store = reactive({
   tabs: load('tabs', []),        // [{id,pid,pinned,title,native,sleep,loading}]
   active: load('active', null),
   settings: Object.assign(
-    { view: 'list', maxAlive: 8, group: true, collapsed: false, closeAction: '' },
+    { view: 'list', maxAlive: 8, group: true, collapsed: false, closeAction: '', silentUpdate: true },
     load('settings', {})
   ),
   q: '',
@@ -170,6 +170,7 @@ export function setActive (id) {
 export function wakeTab (id) { applyTabs(tabLifecycle.wake(tabModel(), id, Date.now())) }
 export function closeTab (id) { applyTabs(tabLifecycle.close(tabModel(), id)) }
 export function togglePin (id) { applyTabs(tabLifecycle.togglePin(tabModel(), id)) }
+export function reorderTab (dragId, targetId) { applyTabs(tabLifecycle.reorder(tabModel(), dragId, targetId)) }
 export function reloadTab (id) { applyTabs(tabLifecycle.reload(tabModel(), id)) }
 export function markLoaded (id) { applyTabs(tabLifecycle.markLoaded(tabModel(), id)) }
 export function sweepLru () { applyTabs(tabLifecycle.lruSweep(tabModel(), store.settings.maxAlive)) }

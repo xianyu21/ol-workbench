@@ -14,6 +14,8 @@ const KEYS = [
   'tabSeq',     // 标签 id 自增序号
   'recent',     // 最近访问（页面 id，最新在前）
   'secClosed',  // 侧栏分组折叠状态
-  'sbw'         // 侧栏宽度
+  'sbw',        // 侧栏宽度
+  'theme',      // 界面主题偏好（auto/light/dark）
+  'zoom'        // 预览缩放（数字倍率或 'fit' 适应宽度）
 ];
 module.exports = { PREFIX, KEYS };
