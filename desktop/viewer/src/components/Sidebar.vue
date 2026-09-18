@@ -1,12 +1,14 @@
 <template>
   <aside class="sidebar" :class="{ collapsed: store.settings.collapsed, dragging }" :style="{ '--sbw': sbw + 'px' }">
     <div class="sb-top">
-      <a-input v-model:value="store.q" placeholder="搜索页面名 / 模块 (Ctrl+K)" allow-clear ref="qRef">
-        <template #prefix><svg-icon name="search" :size="15" /></template>
-      </a-input>
-      <div class="sb-all">
-        <button class="mini" title="展开所有分组" @click="expandAll"><svg-icon name="chev" :size="12" /><span>全部展开</span></button>
-        <button class="mini" title="折叠所有分组" @click="collapseAll"><svg-icon name="chev" :size="12" class="up" /><span>全部折叠</span></button>
+      <div class="sb-row">
+        <a-input v-model:value="store.q" placeholder="搜索 (Ctrl+K)" allow-clear ref="qRef" class="sb-search">
+          <template #prefix><svg-icon name="search" :size="15" /></template>
+        </a-input>
+        <div class="sb-all">
+          <a-tooltip title="展开所有分组"><button class="mini" @click="expandAll"><svg-icon name="chev" :size="13" /></button></a-tooltip>
+          <a-tooltip title="折叠所有分组"><button class="mini" @click="collapseAll"><svg-icon name="chev" :size="13" class="up" /></button></a-tooltip>
+        </div>
       </div>
       <div v-if="chips.length" class="tagbar">
         <button v-for="c in chips" :key="c.key" class="chip" :class="{ on: c.on }" @click="toggleFilter(c.key)">
@@ -95,7 +97,9 @@ function locateActive () {
   nextTick(() => {
     requestAnimationFrame(() => {
       if (!scrollRef.value) return
-      const el = scrollRef.value.querySelector(`.item[data-p="${t.pid}"]`)
+      // 跳过「最近访问」分组（data-recent="1"），定位到真实模块分组里的项
+      const el = scrollRef.value.querySelector(`.sec:not([data-recent="1"]) .item[data-p="${t.pid}"]`)
+        || scrollRef.value.querySelector(`.item[data-p="${t.pid}"]`)
       if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' })
     })
   })
@@ -160,7 +164,9 @@ watch(() => store.active, () => {
   nextTick(() => {
     requestAnimationFrame(() => {
       if (!scrollRef.value) return
-      const el = scrollRef.value.querySelector(`.item[data-p="${t.pid}"]`)
+      // 跳过「最近访问」分组（data-recent="1"），定位到真实模块分组里的项
+      const el = scrollRef.value.querySelector(`.sec:not([data-recent="1"]) .item[data-p="${t.pid}"]`)
+        || scrollRef.value.querySelector(`.item[data-p="${t.pid}"]`)
       if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' })
     })
   })
@@ -178,8 +184,10 @@ watch(() => store.active, () => {
 /* 拖拽遮罩：fixed 铺满窗口、z-index 高于 iframe，保证 mousemove/mouseup 全程落在主文档 */
 .resize-cover{position:fixed;inset:0;z-index:9998;cursor:col-resize;user-select:none;touch-action:none}
 .sb-top{padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border-2)}
-.sb-all{display:flex;gap:6px}
-.sb-all .mini{display:inline-flex;align-items:center;gap:4px;flex:1 1 0;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
+.sb-row{display:flex;align-items:center;gap:6px}
+.sb-search{flex:1 1 auto;min-width:0}
+.sb-all{flex:0 0 auto;display:flex;gap:4px}
+.sb-all .mini{display:inline-flex;align-items:center;justify-content:center;height:28px;width:28px;padding:0;border-radius:6px;font-size:12px;color:var(--text-2);background:var(--panel-3);border:1px solid var(--border-2);cursor:pointer;transition:background .1s,color .1s}
 .sb-all .mini:hover{background:var(--hover);color:var(--primary)}
 .sb-all .mini .up{transform:rotate(180deg)}
 .tagbar{display:flex;flex-wrap:wrap;gap:5px;max-height:88px;overflow:auto}
@@ -190,7 +198,7 @@ watch(() => store.active, () => {
 .chip .n{color:var(--muted);font-size:11px}
 .chip.on .n{color:var(--primary-2)}
 .chip.clear{color:var(--danger)}
-.sb-scroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:6px 8px 20px}
+.sb-scroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:0 8px 20px}
 .empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
 .empty svg{color:var(--empty-ico);margin-bottom:8px}
 .empty b{color:var(--text-2);display:block;margin-bottom:4px;font-size:13.5px}

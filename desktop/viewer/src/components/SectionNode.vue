@@ -1,5 +1,5 @@
 <template>
-  <div class="sec">
+  <div class="sec" :data-recent="node.key === '__recent' ? '1' : null">
     <div class="sec-h" :class="{ closed: isClosed, fixed: node.fixed }" :style="{ paddingLeft: (8 + node.depth * 14) + 'px' }" @click="toggle">
       <svg-icon v-if="!node.fixed" name="chev" :size="13" class="chev" />
       <svg-icon :name="node.icon" :size="13" />
@@ -46,7 +46,9 @@ const props = defineProps({ node: { type: Object, required: true } })
 const isClosed = computed(() => props.node.fixed ? false : !!store.secClosed[props.node.key])
 function toggle () { if (props.node.fixed) return; store.secClosed[props.node.key] = !store.secClosed[props.node.key]; persist() }
 
-const isActive = pid => { const t = tabOf(pid); return t && t.id === store.active }
+/* 「最近访问」分组为快捷入口，不显示激活高亮（避免与真实模块分组里的激活项重复） */
+const inRecent = computed(() => props.node.key === '__recent')
+const isActive = pid => { if (inRecent.value) return false; const t = tabOf(pid); return t && t.id === store.active }
 const metaOf = p => {
   const m = []
   if (p.native) m.push('AxHub 框架')
@@ -120,7 +122,7 @@ function confirmRemove (p) {
 
 <style scoped>
 .sec{min-width:0}
-.sec-h{display:flex;align-items:center;gap:6px;padding:9px 6px 6px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.7px;text-transform:uppercase;user-select:none;cursor:pointer}
+.sec-h{display:flex;align-items:center;gap:6px;padding:9px 6px 6px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.7px;text-transform:uppercase;user-select:none;cursor:pointer;position:sticky;top:0;z-index:5;background:var(--panel);box-shadow:0 1px 0 var(--border-2)}
 .sec-h .chev{transition:transform .15s;flex:0 0 auto}
 .sec-h.closed .chev{transform:rotate(-90deg)}
 .sec-h.fixed{cursor:default}

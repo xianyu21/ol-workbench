@@ -60,22 +60,25 @@ export function open (model, page, opts = {}) {
     return { tabs: out, active: ex.id, tabSeq: model.tabSeq }
   }
   const cur = model.tabs.find(t => t.id === model.active)
-  if (!opts.forceNew && cur && !cur.pinned) {
-    const out = mapById(model.tabs, cur.id, t => patch(t, {
-      pid: page.id, title: page.name, native: !!page.native,
-      sleep: false, loading: true, lastActive: now, src: undefined
-    }))
-    return { tabs: out, active: cur.id, tabSeq: model.tabSeq }
+  /* 新开标签的三种情况：显式 forceNew / 没有当前激活标签 / 当前标签已固定。
+   * 固定标签受保护——导航（侧栏点击、页内链接跳转）一律新开未固定标签，绝不原地替换。 */
+  if (opts.forceNew || !cur || cur.pinned) {
+    const t = {
+      id: 't' + model.tabSeq.n, pid: page.id, pinned: false, title: page.name,
+      native: !!page.native, sleep: false, loading: true, lastActive: now
+    }
+    return {
+      tabs: model.tabs.concat([t]),
+      active: t.id,
+      tabSeq: { n: model.tabSeq.n + 1 }
+    }
   }
-  const t = {
-    id: 't' + model.tabSeq.n, pid: page.id, pinned: false, title: page.name,
-    native: !!page.native, sleep: false, loading: true, lastActive: now
-  }
-  return {
-    tabs: model.tabs.concat([t]),
-    active: t.id,
-    tabSeq: { n: model.tabSeq.n + 1 }
-  }
+  /* 否则原地替换未固定的当前标签（浏览器式替换，保持标签位置不变） */
+  const out = mapById(model.tabs, cur.id, t => patch(t, {
+    pid: page.id, title: page.name, native: !!page.native,
+    sleep: false, loading: true, lastActive: now, src: undefined
+  }))
+  return { tabs: out, active: cur.id, tabSeq: model.tabSeq }
 }
 
 /* 激活标签；目标在休眠态则一并唤醒（invariant 保证点之一） */
@@ -138,8 +141,24 @@ export function markLoaded (model, id) {
   return tabs ? { tabs } : null
 }
 
-/* iframe 自导航重指向：命中已收录页面时改标签的 pid/title/native（src 快照不动 → 不重载） */
+/* iframe 自导航重指向：
+ * - 未固定标签：原地改写 pid/title/native（src 快照不动 → 不重载）
+ * - 固定标签：保护固定页，不改写自身，新开一个未固定标签承载跳转目标，
+ *   并把固定页 iframe 复位回原页面（rc 递增触发重建） */
 export function retargetSelfNav (model, id, page) {
+  const idx = model.tabs.findIndex(t => t.id === id)
+  if (idx < 0) return null
+  const tab = model.tabs[idx]
+  if (tab.pinned) {
+    const nt = {
+      id: 't' + model.tabSeq.n, pid: page.id, pinned: false, title: page.name,
+      native: !!page.native, sleep: false, loading: true, lastActive: Date.now()
+    }
+    const tabs = model.tabs.slice()
+    tabs[idx] = patch(tab, { loading: true, src: undefined, rc: (tab.rc || 0) + 1 })
+    tabs.push(nt)
+    return { tabs, active: nt.id, tabSeq: { n: model.tabSeq.n + 1 } }
+  }
   const tabs = mapById(model.tabs, id, t => patch(t, { pid: page.id, title: page.name, native: !!page.native }))
   return tabs ? { tabs } : null
 }

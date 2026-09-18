@@ -79,6 +79,7 @@ import {
 } from '../store.js'
 import { matchPageByUrl } from '../tabs.js'
 import * as userData from '../user-data.js'
+import { isDark } from '../theme.js'
 
 const titleOf = t => { const p = getP(t.pid); return (p && p.name) || t.title }
 
@@ -176,9 +177,42 @@ function onFrameLoad (e, t) {
     const doc = e.target.contentDocument
     if (doc && doc.querySelectorAll) bindFrameLinks(e.target, doc)
     syncSelfNav(e.target, t)
+    injectIframeStyle(doc, effScale.value !== 1) // 让 iframe 内滚动条变细，缩放时禁用内层滚动避免与外層叠双
   } catch (err) { /* 跨域等场景忽略 */ }
   if (zoom.value === 'fit' && t.id === store.active) setTimeout(measureFit, 150)
 }
+
+/* 向同源预览 iframe 注入滚动条样式（iframe 的滚动条不受父页面 CSS 影响，需注入到其文档）。
+ * 缩放态下禁用 iframe 文档级滚动，整页滚动统一交给外层 .fwrap.on.zoomed，避免双层滚动条。 */
+function injectIframeStyle (doc, zoomed) {
+  if (!doc || !doc.head) return
+  let st = doc.getElementById('__axhub_viewer_style')
+  if (!st) {
+    st = doc.createElement('style')
+    st.id = '__axhub_viewer_style'
+    doc.head.appendChild(st)
+  }
+  const scheme = isDark.value ? 'dark' : 'light'
+  // iframe 是独立文档，滚动条变量需显式注入，才能与外壳(外壳用 :root)保持同一套主题色
+  const vars = isDark.value
+    ? '--scroll-thumb:#3a455c;--scroll-thumb-hover:#4d5a76'
+    : '--scroll-thumb:#ccd3dc;--scroll-thumb-hover:#aeb8c6'
+  st.textContent =
+    'html{' + vars + ';color-scheme:' + scheme + ';scrollbar-width:thin;scrollbar-color:var(--scroll-thumb) transparent}\n' +
+    '::-webkit-scrollbar{width:8px;height:8px}\n' +
+    '::-webkit-scrollbar-track{background:transparent}\n' +
+    '::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:8px;border:2px solid transparent;background-clip:content-box}\n' +
+    '::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}\n' +
+    (zoomed ? 'html,body{overflow:hidden !important}\n' : '')
+}
+/* 缩放 / 主题变化时同步刷新当前激活 iframe 的注入样式 */
+function injectActive () {
+  const f = document.querySelector('.fwrap.on iframe')
+  if (!f) return
+  try { injectIframeStyle(f.contentDocument, effScale.value !== 1) } catch (e) { /* 跨域忽略 */ }
+}
+watch(effScale, injectActive)
+watch(isDark, injectActive)
 
 /* iframe 自行跳转（Axure 式 JS location 跳转 / meta refresh / 表单）：
  * load 后比对当前文档地址，命中已收录页面则把标签重指向新页（含 openCount/最近访问），
