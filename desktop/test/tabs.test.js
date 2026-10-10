@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const T = () => import('../viewer/src/tabs.js');
+const T = () => import('../viewer/src/lib/tabs.js');
 let tabs;
 
 test.before(async () => { tabs = await T(); });

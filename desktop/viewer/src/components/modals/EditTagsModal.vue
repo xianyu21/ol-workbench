@@ -4,7 +4,7 @@
     <div class="fld">
       <div class="lbl">选择标签（可多选）</div>
       <div class="pickwrap">
-        <button v-for="t in store.tags" :key="t.name" class="pick" :class="{ on: sel.indexOf(t.name) >= 0 }"
+        <button v-for="t in ws.tags" :key="t.name" class="pick" :class="{ on: sel.indexOf(t.name) >= 0 }"
           :style="sel.indexOf(t.name) >= 0 ? { color: t.color } : {}" @click="toggle(t.name)">
           <span class="dot" :style="{ background: t.color }" />{{ t.name }}
         </button>
@@ -21,13 +21,14 @@
   </a-modal>
 </template>
 
-<script setup>
-import { computed, ref, watch } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { store, persist, getP, ensureTag } from '../../store.js'
-import { ui } from '../../ui.js'
+import { useWorkspaceStore, useUiStore } from '@/stores'
+const ws = useWorkspaceStore()
+const { ui } = useUiStore()
 
-const p = computed(() => (ui.editTagsPid ? getP(ui.editTagsPid) : null))
+const p = computed(() => (ui.editTagsPid ? ws.getP(ui.editTagsPid) : null))
 const sel = ref([])
 const newTag = ref('')
 watch(p, v => { sel.value = v ? (v.tags || []).slice() : [] })
@@ -41,16 +42,15 @@ function addTag () {
   const v = newTag.value.trim()
   if (!v) return
   if (v.length > 12) { message.warning('标签名过长（≤12字）'); return }
-  ensureTag(v)
-  persist()
+  ws.ensureTag(v)
+  ws.persist()
   if (sel.value.indexOf(v) < 0) sel.value.push(v)
   newTag.value = ''
 }
 function ok () {
   if (!p.value) return
   p.value.tags = sel.value.slice()
-  persist()
-  ui.editTagsPid = null
+  ws.persist()
   message.success('标签已更新')
 }
 </script>

@@ -9,20 +9,20 @@
   </a-modal>
 </template>
 
-<script setup>
-import { computed, ref, watch } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { store, getP, renameProject } from '../../store.js'
-import { ui } from '../../ui.js'
+import { useWorkspaceStore, useUiStore } from '@/stores'
+const ws = useWorkspaceStore()
+const { ui } = useUiStore()
 
-const p = computed(() => (ui.renamePid ? getP(ui.renamePid) : null))
+const p = computed(() => (ui.renamePid ? ws.getP(ui.renamePid) : null))
 const name = ref('')
 watch(p, v => { name.value = v ? v.name : '' })
 
 function ok () {
   if (!name.value.trim()) { message.warning('名称不能为空'); return }
-  renameProject(ui.renamePid, name.value)
-  ui.renamePid = null
+  ws.renameProject(ui.renamePid, name.value)
   message.success('已重命名')
 }
 </script>

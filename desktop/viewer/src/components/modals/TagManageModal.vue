@@ -3,9 +3,9 @@
     :width="520" :closable="true" @ok="ui.tagManage = false" @cancel="ui.tagManage = false">
     <div class="fld">
       <div class="lbl">全部标签</div>
-      <div v-if="!store.tags.length" class="empty-sm">还没有标签</div>
+      <div v-if="!ws.tags.length" class="empty-sm">还没有标签</div>
       <div v-else class="tglist">
-        <div v-for="(t, i) in store.tags" :key="t.name + i" class="tgrow">
+        <div v-for="(t, i) in ws.tags" :key="t.name + i" class="tgrow">
           <span class="dot" title="点击换色" :style="{ background: t.color }" @click="cycleColor(i)" />
           <a-input v-model:value="t.name" size="small" @change="e => renameTag(i, e.target.value)" />
           <span class="cnt">{{ usedCount(t.name) }} 个</span>
@@ -24,48 +24,49 @@
   </a-modal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
-import { Modal, message } from 'ant-design-vue'
-import SvgIcon from '../SvgIcon.vue'
-import { store, persist, PALETTE, tagColor, ensureTag } from '../../store.js'
-import { ui } from '../../ui.js'
+import { message, Modal } from 'ant-design-vue'
+import SvgIcon from '@/components/common/SvgIcon.vue'
+import { useWorkspaceStore, useUiStore } from '@/stores'
+const ws = useWorkspaceStore()
+const { ui } = useUiStore()
 
 const newName = ref('')
-const usedCount = n => store.projects.filter(p => (p.tags || []).indexOf(n) >= 0).length
+const usedCount = n => ws.projects.filter(p => (p.tags || []).indexOf(n) >= 0).length
 
 function cycleColor (i) {
-  const cur = PALETTE.indexOf(store.tags[i].color)
-  store.tags[i].color = PALETTE[(cur + 1) % PALETTE.length]
-  persist()
+  const cur = ws.PALETTE.indexOf(ws.tags[i].color)
+  ws.tags[i].color = ws.PALETTE[(cur + 1) % ws.PALETTE.length]
+  ws.persist()
 }
 function renameTag (i, nv) {
-  const t = store.tags[i]
+  const t = ws.tags[i]
   const ov = t.name
   nv = (nv || '').trim()
   if (!nv || nv === ov) { t.name = ov; return }
-  if (store.tags.some((x, k) => k !== i && x.name === nv)) { message.warning('已有同名标签'); t.name = ov; return }
+  if (ws.tags.some((x, k) => k !== i && x.name === nv)) { message.warning('已有同名标签'); t.name = ov; return }
   t.name = nv
-  store.projects.forEach(p => {
+  ws.projects.forEach(p => {
     if (!p.tags) return
     const k = p.tags.indexOf(ov)
     if (k >= 0) p.tags[k] = nv
   })
-  store.filterTags = store.filterTags.map(x => (x === ov ? nv : x))
-  persist()
+  ws.filterTags = ws.filterTags.map(x => (x === ov ? nv : x))
+  ws.persist()
   message.success('已改名')
 }
 function removeTag (i) {
-  const nm = store.tags[i].name
+  const nm = ws.tags[i].name
   Modal.confirm({
     title: '删除标签',
     content: `删除「${nm}」，同时摘掉所有页面上的该标签。`,
     okText: '删除', okType: 'danger', cancelText: '取消',
     onOk () {
-      store.tags.splice(i, 1)
-      store.projects.forEach(p => { if (p.tags) p.tags = p.tags.filter(t => t !== nm) })
-      store.filterTags = store.filterTags.filter(t => t !== nm)
-      persist()
+      ws.tags.splice(i, 1)
+      ws.projects.forEach(p => { if (p.tags) p.tags = p.tags.filter(t => t !== nm) })
+      ws.filterTags = ws.filterTags.filter(t => t !== nm)
+      ws.persist()
       message.success('已删除')
     }
   })
@@ -74,9 +75,9 @@ function addTag () {
   const v = newName.value.trim()
   if (!v) { message.warning('请输入标签名'); return }
   if (v.length > 12) { message.warning('标签名过长（≤12字）'); return }
-  if (store.tags.some(t => t.name === v)) { message.warning('已有同名标签'); return }
-  ensureTag(v)
-  persist()
+  if (ws.tags.some(t => t.name === v)) { message.warning('已有同名标签'); return }
+  ws.ensureTag(v)
+  ws.persist()
   newName.value = ''
   message.success('已新建')
 }

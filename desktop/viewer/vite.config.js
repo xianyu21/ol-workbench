@@ -1,9 +1,13 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// 构建产物输出到 desktop/viewer-dist，由 axhub-server.js 在 /_axviewer 下同源服务
+// 构建产物输出到 desktop/viewer-dist，由桌面端零依赖服务在 /_axviewer 下同源服务
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }
+  },
   base: './',
   build: {
     outDir: '../viewer-dist',
@@ -15,9 +19,9 @@ export default defineConfig({
     commonjsOptions: { include: [/node_modules/, /scan-shared\.js$/, /user-keys\.js$/] },
     rollupOptions: {
       output: {
-        // 把体积大头 ant-design-vue / vue 拆成独立 chunk，业务代码改动时命中缓存
+        // 把体积大头拆成独立 chunk，业务代码改动时命中缓存
         manualChunks: {
-          vendor: ['vue'],
+          vendor: ['vue', 'vue-router', 'pinia'],
           antdv: ['ant-design-vue']
         }
       }

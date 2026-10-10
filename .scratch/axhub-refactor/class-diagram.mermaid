@@ -1,0 +1,52 @@
+classDiagram
+    class App {
+      +start(deps)
+      -registerProtocol()
+      -registerIpc()
+      -setupUpdater()
+      -openViewer()
+      -lifecycle()
+    }
+    class ProtocolAdapter {
+      +registerAxhubProtocol(protocol, core, getViewerDir)
+    }
+    class IpcRegistry {
+      +registerIpc(ipcMain, deps)
+    }
+    class WorkspaceIpc { +register(ipcMain, core, window) }
+    class UserDataIpc { +register(ipcMain, userStore) }
+    class ApiDocsIpc { +register(ipcMain) }
+    class UpdateIpc { +register(ipcMain, autoUpdater, sendToWin, VERSION, PORTABLE) }
+    class CloseIpc { +register(ipcMain, config) }
+    class Updater { +setupAutoUpdater(deps) }
+    class Tray { +ensureTray() +trayIconPath() }
+    class Logger { +log(...args) }
+    class WindowMgr { +createWindow() +openViewer(d) +showMainWindow() +handleClose() }
+    class Config { +loadConfig() +saveConfig(patch) +loadDir() +saveDir(d) }
+    class ServeCore {
+      +setViewerDir(dir)
+      +getViewerDir()
+      +setRoot(root)
+      +getRoot()
+      +handleRequest(opts)* async
+      +scanAxHub(root)* async
+      +fileResponse(...)* async
+      +withContent(...)* async
+      +getViewerHtml()* async
+      +safeJoin(root, reqPath)
+      +mimeOf(p)
+    }
+    App --> ProtocolAdapter
+    App --> IpcRegistry
+    App --> Updater
+    App --> WindowMgr
+    App --> Tray
+    App --> Config
+    IpcRegistry --> WorkspaceIpc
+    IpcRegistry --> UserDataIpc
+    IpcRegistry --> ApiDocsIpc
+    IpcRegistry --> UpdateIpc
+    IpcRegistry --> CloseIpc
+    WindowMgr --> ServeCore
+    ProtocolAdapter --> ServeCore
+    note for ServeCore : * = P0-3 异步化；\nsetViewerDir 取代 4 处 fallback (P0-4)

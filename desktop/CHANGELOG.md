@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.2.2 · 2026-10-10
+
+> 自 v1.0.40 起的累积版本（壳层模块化 + 工程化 + TypeScript 迁移 + API 文档视图），首次登 Release。
+
+- 🚀 **壳层模块化重构**：`main.js` 从 ~470 行单体拆为「依赖注入 + 装配」的 40 行入口，业务拆到 `desktop/src/`（`app` / `window` / `tray` / `updater` / `protocol` / `logger` / `config` / `context` / `preload-bridge` + `ipc/` 五个处理器）。所有原生依赖以参数注入，模块可独立测试
+- 🧩 **IPC 分层**：preload 桥改为 `src/preload-bridge.js` 统一装配，`ipc/{index,workspace,apidocs,close,update,user-data}.js` 按职责分文件，主进程侧不再散落 `ipcMain.on`
+- 🛡 **工程化守门**：新增 `scripts/{bump-version,release-check,dist-safe}.mjs`——版本号单源同步（desktop/viewer 一致 + CHANGELOG 占位）、发版前校验三处版本一致、沙箱安全打包；测试从 26 项扩到 **66 项**（新增 ipc / preload / main-smoke / api-docs / host-conformance）
+- 🎨 **TypeScript 渐进迁移**：`stores/`、`router/`、`composables/` 核心模块迁移为 `.ts`（保留 `.js` 双份过渡）；`vite.config.ts` 增加 `.ts/.tsx` 解析优先级；补 `tsconfig.json` / `env.d.ts` 类型声明
+- 📚 **API 文档视图（新功能）**：工作台新增第二个内容视图，与原型预览并列（左侧 icon 窄栏 `ViewRail` 切换，路由 `#/proto` / `#/api`）
+  - 导入 Apifox / Apipost 导出的 Markdown，一个文件即一个业务模块；左侧「业务模块 → 接口」两级树，右侧接口详情 + 代码示例面板
+  - Markdown 解析规则集中在 `lib/api-docs-md.js` 顶部常量表（适配不同导出工具差异）；**任何输入都不抛错**，识别不到接口时降级为原文展示
+  - 只持久化原始 Markdown、不存解析结果（解析规则升级无需迁移数据）；`apiDocs` 独立持久化通道（避免切换标签时序列化大段 Markdown）
+  - 纯文档展示，不发请求、不做接口调试
+- 🏗 **前端工程结构规范化**：`src/` 按 Vue 3 官方约定重整为 `views/`（ProtoWorkspace / ApiWorkspace）+ `components/{common,proto,api,modals}/` + `router/` + `stores/` + `composables/` + `lib/`（零 Vue 依赖纯逻辑）+ `host/`（SPI）；import 统一 `@/` 别名（`vite.config` 与 `jsconfig` 同步）
+- 🔌 **工作区宿主 SPI**：渲染层对运行环境的唯一语义出入口 `host/index.js`，业务层只认领域动词能力名（`chooseWorkspace` / `readPageManifest` / `archiveSnapshot` …），对「桌面壳 / 本地服务 / 纯浏览器 / 测试」零知识；三后端（electron / browser / headless）+ conformance 契约测试强制守界；渲染层禁止直连 `window.axhub` / `localStorage`
+- ⚙️ **构建与打包**：`package.json` 改用 npm workspaces（`viewer` 作为子包）；新增 `type-check` / `lint` / `format` / `dist:safe` 脚本；主进程入口与 `src/` 纳入打包 files
+- 🗑 **移除桌面端 axhub-server.js 运行时依赖**：HTTP 版已归档为 `AxHub-HTTP-Server.zip`，桌面端走 `axhub://` 协议零端口（详见 v1.0.27 段）
+- 📄 文档：`CONTEXT.md` 补领域语言（视图模式 / API 视图 / 业务模块 / 接口 / 工作区宿主）；新增 `docs/vue3-project-structure.md`、`docs/spi-first-audit.md`、`docs/spi-first-host-bridge.md`；`.scratch/` 补重构 PRD 与架构图
+
 ## v1.0.40 · 2026-09-18
 
 - ✨ **侧栏分组头吸顶**：长列表滚动时分组标题常驻顶部（带底色与分隔线），不再丢失上下文

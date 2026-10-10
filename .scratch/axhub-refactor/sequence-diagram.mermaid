@@ -1,0 +1,61 @@
+%% 启动流程：main 注入 viewerDir → 起服务 → 渲染经 host 桥调能力
+sequenceDiagram
+    participant E as main.js(入口≤80行)
+    participant A as app.js(装配器)
+    participant P as protocol.js
+    participant I as ipc/index.js
+    participant U as updater.js
+    participant W as window.js
+    participant C as serve-core
+    participant R as 渲染进程(preload+host)
+
+    E->>A: start({app,BrowserWindow,ipcMain,protocol,net,...})
+    A->>P: registerAxhubProtocol(protocol, core, getViewerDir)
+    A->>I: registerIpc(ipcMain, {core,userStore,autoUpdater,...})
+    A->>U: setupAutoUpdater({autoUpdater,sendToWin,VERSION,PORTABLE})
+    A->>W: openViewer(savedDir)
+    W->>C: setViewerDir(injectedPath)
+    W->>C: setRoot(dir)
+    W->>C: scanAxHub(dir)
+    W->>W: win.loadURL(axhub://local/_axviewer/)
+    Note over R: preload.js 构造桥 → host 单例(从 window.axhub)
+    R->>I: invoke tree:get
+    I->>C: scanAxHub(getRoot())
+    C-->>I: 清单
+    I-->>R: 清单
+    R->>R: host.readPageManifest() → 渲染工作台
+
+%% iframe 同源联动流程（axhub://local 单一 origin）
+sequenceDiagram
+    participant Tab as ViewerPane(iframe)
+    participant RP as 渲染进程(router)
+    participant Core as serve-core(axhub://)
+
+    Note over Tab,Core: 同 origin = axhub://local，无跨源/CORS 烦恼
+    Tab->>Core: GET axhub://local/<page>.html (媒体 Range)
+    Core-->>Tab: stream (fs.createReadStream, P0-3 异步)
+    Tab->>Tab: 页内 <a target=_blank> 链接
+    Tab->>RP: 捕获 → 开新 tab(ViewerPane)
+    RP->>RP: 纯前端 router，host 无关；守「激活标签不休眠」
+    Note over Tab,RP: 同源页内联动不变量（铁律#4 场景）持续成立
+
+%% 任务依赖图（基础任务，含 T15/T16）
+graph TD
+    T1[P0-1 主进程模块化] --> T2[P0-2 可注入化+测试]
+    T1 --> T5[P1-1 版本单源]
+    T1 --> T12[P2-4 日志异步]
+    T3[P0-3 IO异步] --> T4[P0-4 目录单源]
+    T3 --> T9[P1-5 移除server]
+    T4 --> T9
+    T5 --> T7[P1-3 去cd/workspaces]
+    T2 --> T8[P1-4 工具链+CI]
+    T3 --> T8
+    T4 --> T8
+    T6[P1-2 dist:safe] --> T8
+    T7 --> T15[TS引入]
+    T15 -.并行.-> T8
+    T16[browser裁剪] -.并行.-> T9
+    T10[P1-6 iframe治理] -.并行.-> T8
+    T11[P2-1 主题] -.并行.-> T8
+    T13[P2-3 双源一致] -.并行.-> T8
+    T14[P2-5 ADR] -.并行.-> T8

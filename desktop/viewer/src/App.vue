@@ -4,7 +4,7 @@
       <!-- 顶栏 -->
       <header class="topbar">
         <div class="brand">
-          <button class="logo" :title="store.settings.collapsed ? '展开侧栏 (Ctrl+B)' : '收起侧栏 (Ctrl+B)'"
+          <button class="logo" :title="settings.collapsed ? '展开侧栏 (Ctrl+B)' : '收起侧栏 (Ctrl+B)'"
             @click="toggleSidebar"><svg-icon name="layers" :size="16" /></button>
           <span>AxHub 原型工作台</span>
           <small>桌面版</small>
@@ -15,7 +15,7 @@
           <span class="hd-lbl">AxHub 导航</span>
         </a-button>
         <a-tooltip title="选择 AxHub 导出目录">
-          <a-button type="primary" @click="selectDirectory">
+          <a-button type="primary" @click="ws.selectDirectory">
             <template #icon><svg-icon name="folder" :size="15" /></template>
             <span class="hd-lbl">选择目录</span>
           </a-button>
@@ -35,18 +35,31 @@
       </header>
 
       <!-- 未选择目录 / 空目录引导条 -->
-      <div v-if="store.loaded && !store.projects.length && !store.loadError" class="emptybar">
+      <div v-if="!isApi && ws.loaded && !ws.projects.length && !ws.loadError" class="emptybar">
         <svg-icon name="folder" :size="16" />
         <span>尚未加载 AxHub 原型导出目录</span>
-        <a-button type="primary" size="small" @click="selectDirectory">选择目录</a-button>
+        <a-button type="primary" size="small" @click="ws.selectDirectory">选择目录</a-button>
       </div>
 
       <main class="main">
-        <Sidebar />
-        <section class="content">
-          <TabBar />
-          <ViewerPane />
-        </section>
+        <!-- 最左侧图标窄栏：原型视图 / API 视图 -->
+        <ViewRail />
+        <!--
+          两个工作区同时挂载，由当前路由决定谁可见（v-show）。
+          注意：这里**不能**改用单个 <router-view> 让组件在切换时卸载 —— 原型视图的
+          ViewerPane 持有活的 iframe，一旦被移出 DOM 就会重新加载，已打开页面的交互
+          状态全部丢失。因此路由只负责「视图状态 + 深链」，保活由常驻挂载负责。
+          关键：v-show 必须加在「单根包裹层」上，不能直接加在 <router-view> 上 —— 两个
+          工作区组件都是多根节点（fragment：侧栏 + 内容区），v-show 加在 router-view 只会
+          隐藏其第一个根（侧栏），内容区（含 iframe）仍留在 DOM，与另一视图重叠互串，
+          表现即「两视图不共存」。包一层单根 div 后整块一起显隐，且仍是 v-show 不卸载。
+        -->
+        <div v-show="!isApi" class="ws-pane">
+          <router-view />
+        </div>
+        <div v-show="isApi" class="ws-pane">
+          <router-view name="api" />
+        </div>
       </main>
 
       <!-- 弹窗组 -->
@@ -56,10 +69,12 @@
       <TagManageModal />
       <BackupModal />
       <SettingsModal />
+      <ImportMdModal />
+      <ModuleNameModal />
 
       <!-- 无 AxHub 目录引导弹窗：每次打开应用时若未关联目录都会弹出 -->
       <a-modal :open="noDirTip" title="添加 AxHub 原型目录" :width="460" :closable="false"
-        :maskClosable="false" :keyboard="false" :footer="null" :zIndex="2000">
+        :maskClosable="false" :keyboard="false" :zIndex="2000">
         <div class="nodir">
           <div class="nd-msg">工作台还没有关联 AxHub 导出目录，添加后即可在左侧浏览全部原型页面。</div>
           <div class="nd-step"><b>添加入口：</b></div>
@@ -81,7 +96,8 @@
         </template>
       </a-modal>
 
-      <!-- 关闭行为询问（Electron 点 X 且未记住选择时） -->      <a-modal :open="closeAsk" title="关闭 AxHub 原型工作台" :width="420" :closable="true"
+      <!-- 关闭行为询问（Electron 点 X 且未记住选择时） -->
+      <a-modal :open="closeAsk" title="关闭 AxHub 原型工作台" :width="420" :closable="true"
         :maskClosable="true" @cancel="closeAsk = false">
         <div class="close-ask">
           <div class="ca-q">要在后台继续运行，还是直接退出？</div>
@@ -117,23 +133,41 @@
   </a-config-provider>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { message, theme as antdTheme } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
-import SvgIcon from './components/SvgIcon.vue'
-import ContextMenu from './components/ContextMenu.vue'
-import Sidebar from './components/Sidebar.vue'
-import TabBar from './components/TabBar.vue'
-import ViewerPane from './components/ViewerPane.vue'
-import RenameModal from './components/modals/RenameModal.vue'
-import EditTagsModal from './components/modals/EditTagsModal.vue'
-import TagManageModal from './components/modals/TagManageModal.vue'
-import BackupModal from './components/modals/BackupModal.vue'
-import SettingsModal from './components/modals/SettingsModal.vue'
-import { store, persist, fetchTree, openProject, setActive, closeTab, togglePin, selectDirectory, NATIVE_ID } from './store.js'
-import { ui } from './ui.js'
-import { isDark } from './theme.js'
+
+import SvgIcon from '@/components/common/SvgIcon.vue'
+import ContextMenu from '@/components/common/ContextMenu.vue'
+import ViewRail from '@/components/common/ViewRail.vue'
+import RenameModal from '@/components/modals/RenameModal.vue'
+import EditTagsModal from '@/components/modals/EditTagsModal.vue'
+import TagManageModal from '@/components/modals/TagManageModal.vue'
+import BackupModal from '@/components/modals/BackupModal.vue'
+import SettingsModal from '@/components/modals/SettingsModal.vue'
+import ImportMdModal from '@/components/modals/ImportMdModal.vue'
+import ModuleNameModal from '@/components/modals/ModuleNameModal.vue'
+
+import { useWorkspaceStore, useSettingsStore, useUiStore } from '@/stores'
+import { useHostSignals } from '@/composables/useHostSignals'
+import { useShortcuts, openNativeNav } from '@/composables/useShortcuts'
+import { isDark } from '@/lib/theme.js'
+
+const route = useRoute()
+const ws = useWorkspaceStore()
+const settingsStore = useSettingsStore()
+const { settings } = settingsStore
+const { ui } = useUiStore()
+
+/* 当前视图由路由决定；settings.viewMode 只做持久化，跟随路由同步 */
+const isApi = computed(() => route.params.view === 'api')
+watch(isApi, v => {
+  settingsStore.setViewMode(v ? 'api' : 'proto')
+  // 切回原型视图：TabBar 隐藏期间 clientWidth 为 0，需触发一次 resize 重算溢出箭头
+  if (!v) nextTick(() => window.dispatchEvent(new Event('resize')))
+}, { immediate: true })
 
 /* antd 主题 token：跟随 theme.js 的 isDark 切换 darkAlgorithm */
 const tokens = { colorPrimary: '#1296db', colorInfo: '#1296db', borderRadius: 7, fontFamily: 'var(--font)' }
@@ -142,42 +176,21 @@ const themeCfg = computed(() => isDark.value
   : { token: tokens }
 )
 
-/* ---------- 关闭行为询问（主进程 → preload → 此处弹 antd Modal） ---------- */
-const closeAsk = ref(false)
-const closeRemember = ref(false)
-function applyClose (action) {
-  window.axhub?.applyCloseAction(action, closeRemember.value)
-  closeAsk.value = false
-}
-onMounted(() => { window.axhub?.onCloseActionRequest(() => { closeAsk.value = true }) })
+/* ---------- 宿主信号：关闭询问 / 后台更新 ---------- */
+const {
+  closeAsk, closeRemember, updatePct, updateVer, readyVer, updateReady, applyClose, installNow
+} = useHostSignals()
 
-/* ---------- 更新：后台静默下载（主进程 → preload → 页内非模态提示） ---------- */
-const updatePct = ref(null)   // null = 未在下载
-const updateVer = ref('')
-const readyVer = ref('')
-const updateReady = ref(false)
-function installNow () { window.axhub?.installUpdate?.() }
-onMounted(() => {
-  window.axhub?.onUpdateProgress?.(pct => { updatePct.value = pct })
-  window.axhub?.onUpdateAvailable?.(info => { updateVer.value = (info && info.version) || '' })
-  // 下载完成：提示立即重启；不点则退出应用时自动安装（主进程 autoInstallOnAppQuit）
-  window.axhub?.onUpdateReady?.(info => {
-    updateReady.value = true
-    readyVer.value = (info && info.version) || updateVer.value
-    updatePct.value = null
-  })
-})
+/* ---------- 快捷键 ---------- */
+const { toggleSidebar } = useShortcuts(isApi)
 
 function rescan () {
   message.info('正在重新扫描目录…', 1.5)
-  store.loaded = false
-  fetchTree()
+  ws.loaded = false
+  ws.fetchTree()
 }
 function openNative () {
-  const ex = store.tabs.filter(t => t.pid === NATIVE_ID)[0]
-  if (ex) { setActive(ex.id); return }
-  openProject(NATIVE_ID, true)
-  message.success('已打开 AxHub 原生导航', 1.8)
+  if (openNativeNav()) message.success('已打开 AxHub 原生导航', 1.8)
 }
 
 /* 无 AxHub 目录引导弹窗：每次打开（重载/重启）时若仍未关联目录都弹出 */
@@ -186,50 +199,20 @@ const dirPicking = ref(false)
 async function pickNow () {
   dirPicking.value = true
   try {
-    await selectDirectory() // 选择成功由主进程重载进工作台；取消则留在弹窗
+    const name = await ws.selectDirectory() // 选择成功由主进程重载进工作台；取消则留在弹窗
+    if (name) noDirTip.value = false // 选择成功（含 reload 前）立即关闭引导弹窗
   } finally {
     dirPicking.value = false
   }
 }
 
-/* 顶栏 logo / Ctrl+B：收起 ↔ 展开。收起态恢复侧栏为固定宽度（见 Sidebar.restoreSidebar） */
-function toggleSidebar () {
-  if (store.settings.collapsed) {
-    window.dispatchEvent(new Event('ax-restore-sidebar'))
-    return
-  }
-  if (innerWidth > 860) { store.settings.collapsed = true; persist() }
-}
-
-/* ---------- 快捷键（与旧版一致） ---------- */
-function onKey (e) {
-  const mod = e.ctrlKey || e.metaKey
-  if (e.key === 'Escape') return
-  if (mod && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); window.dispatchEvent(new Event('ax-focus-search')); return }
-  if (mod && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); const t = store.tabs.filter(x => x.id === store.active)[0]; if (t) togglePin(t.id); return }
-  if (mod && (e.key === 'r' || e.key === 'R')) { if (store.tabs.length) { e.preventDefault(); window.dispatchEvent(new Event('ax-reload-active')) } return }
-  if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); toggleSidebar(); return }
-  if (e.altKey && (e.key === 'w' || e.key === 'W')) { e.preventDefault(); if (store.active) closeTab(store.active); return }
-  if (e.altKey && e.key >= '1' && e.key <= '9') { e.preventDefault(); const i = +e.key - 1; if (store.tabs[i]) setActive(store.tabs[i].id); return }
-  if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-    e.preventDefault()
-    const idx = store.tabs.findIndex(t => t.id === store.active)
-    if (idx < 0) return
-    let n = e.key === 'ArrowLeft' ? idx - 1 : idx + 1
-    if (n < 0) n = store.tabs.length - 1
-    if (n >= store.tabs.length) n = 0
-    if (store.tabs[n]) setActive(store.tabs[n].id)
-  }
-}
-
 onMounted(() => {
-  document.addEventListener('keydown', onKey)
-  fetchTree().then(() => {
+  ws.fetchTree().then(() => {
     // 加载完成且未关联任何目录 → 弹出添加引导（每次都弹，直到关联目录）
-    if (!store.rootDir && !store.loadError) noDirTip.value = true
+    // API 视图下不弹：该弹窗引导的是原型目录，与接口文档无关
+    if (!ws.rootDir && !ws.loadError && !isApi.value) noDirTip.value = true
   })
 })
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 </script>
 
 <style scoped>
@@ -246,7 +229,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .emptybar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px;background:var(--panel-3);border-bottom:1px solid var(--border);color:var(--text-2)}
 .emptybar .sp{flex:1 1 auto}
 .main{flex:1 1 auto;display:flex;min-height:0;position:relative}
-.content{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+/* 工作区单根包裹层：v-show 作用于此整块（含 iframe），保证两个视图干净切换、互不重叠 */
+.ws-pane{flex:1 1 auto;display:flex;min-width:0;min-height:0}
 @media(max-width:860px){.hd-lbl{display:none}}
 .close-ask{display:flex;flex-direction:column;gap:10px;padding-top:2px}
 .ca-q{font-size:14px;font-weight:600;color:var(--text)}

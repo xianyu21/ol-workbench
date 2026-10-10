@@ -1,0 +1,95 @@
+/* 全局基础样式：沿用旧版配色变量，antdv 主题 token 在 App.vue 定制 */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --panel-2:#fafbfc; --panel-3:#f2f4f7;
+  --border:#e3e7ec; --border-2:#edf0f4;
+  --text:#1f2b3d; --text-2:#56637a; --muted:#8b97a8;
+  --primary:#1296db; --primary-2:#0d7cad; --primary-soft:#e7f4fc; --primary-soft-2:#d3ebf9;
+  --danger:#e5484d; --warn:#f97316; --warn-soft:#fff2e8; --ok:#16a34a;
+  --r:10px; --r-sm:7px; --r-lg:14px;
+  --sh-1:0 1px 2px rgba(31,43,61,.06);
+  --sh-2:0 2px 6px rgba(31,43,61,.07),0 8px 24px rgba(31,43,61,.07);
+  --sh-3:0 8px 32px rgba(31,43,61,.14);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --sbw:300px;
+  /* 交互细节色（暗色主题在下方覆盖，组件内一律引用变量、不再写死色值） */
+  --hover:#e8ecf1;        /* 通用悬停底色 */
+  --hover-2:#eef1f5;      /* 标签悬停底色 */
+  --btn-soft:rgba(31,43,61,.1);   /* 小图标按钮悬停底色 */
+  --scroll-thumb:#ccd3dc; --scroll-thumb-hover:#aeb8c6;
+  --mark-bg:#fff3bf; --mark-text:#1f2b3d;   /* 搜索高亮 */
+  --mark-bg-2:#ffe58f;                      /* 侧栏命中高亮 */
+  --warn-border:#ffd9bd; --warn-text:#8a4b12;
+  --empty-ico:#c3ccd7;    /* 空状态图标 */
+  --frame-bg:#ffffff;     /* 预览 iframe 内容底色（原型页自身是白底，两主题保持白） */
+  --font-mono:"SFMono-Regular",Consolas,"Cascadia Code","Fira Code","Liberation Mono",Menlo,monospace;
+  /* API 视图：请求方法配色（走本工作台色系，不引外部主题色） */
+  --m-get:#10794a; --m-get-bg:#e6f6ec;
+  --m-post:#4a5fd8; --m-post-bg:#eceefe;
+  --m-put:#b45309; --m-put-bg:#fdf1e3;
+  --m-delete:#d93a3f; --m-delete-bg:#fdecec;
+  --m-patch:#7c3aed; --m-patch-bg:#f2ebfd;
+  --m-other:#8b97a8; --m-other-bg:#f2f4f7;
+  --m-req-text:#d93a3f; --m-req-bg:#fdecec;
+  /* API 视图：代码块 / 提示条 / 表格 */
+  --code-bg:#f6f8fa; --code-border:#e3e7ec; --code-head-bg:#eef1f5;
+  --code-text:#1f2b3d; --code-text-2:#56637a;
+  --info-soft:#e7f4fc; --info-border:#bfe3f7; --info-text:#0b5f85;
+  --tbl-head-bg:#f2f4f7; --tbl-stripe:#fafbfc;
+}
+/* 暗色主题：html[data-theme="dark"] 由 theme.js 依据用户偏好/系统设置写入 */
+html[data-theme="dark"]{
+  --bg:#12161f; --panel:#1a202c; --panel-2:#161c27; --panel-3:#222a39;
+  --border:#2a3345; --border-2:#232b3b;
+  --text:#e6ebf3; --text-2:#a9b3c4; --muted:#75809a;
+  --primary:#2fa2e0; --primary-2:#5cb8ec; --primary-soft:rgba(47,162,224,.16); --primary-soft-2:rgba(47,162,224,.28);
+  --danger:#f2555a; --warn:#f98a33; --warn-soft:rgba(249,138,51,.14); --ok:#2eb45c;
+  --hover:#232b3b; --hover-2:#202839;
+  --btn-soft:rgba(230,235,243,.1);
+  --scroll-thumb:#3a455c; --scroll-thumb-hover:#4d5a76;
+  --mark-bg:#5c5316; --mark-text:#ffe9a8;
+  --mark-bg-2:#6b5e1a;
+  --warn-border:#5c3d1a; --warn-text:#f0b072;
+  --empty-ico:#4d5a76;
+  --m-get:#3ecf8e; --m-get-bg:rgba(62,207,142,.14);
+  --m-post:#8ea2ff; --m-post-bg:rgba(142,162,255,.16);
+  --m-put:#f0a742; --m-put-bg:rgba(240,167,66,.14);
+  --m-delete:#ff6b70; --m-delete-bg:rgba(255,107,112,.14);
+  --m-patch:#b98cff; --m-patch-bg:rgba(185,140,255,.16);
+  --m-other:#75809a; --m-other-bg:#222a39;
+  --m-req-text:#ff6b70; --m-req-bg:rgba(255,107,112,.16);
+  --code-bg:#0f1420; --code-border:#2a3345; --code-head-bg:#1a202c;
+  --code-text:#e6ebf3; --code-text-2:#a9b3c4;
+  --info-soft:rgba(47,162,224,.12); --info-border:#2a4a63; --info-text:#8ec9ef;
+  --tbl-head-bg:#222a39; --tbl-stripe:#1a202c;
+  --sh-1:0 1px 2px rgba(0,0,0,.35);
+  --sh-2:0 2px 6px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.4);
+  --sh-3:0 8px 32px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,#app{height:100%;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
+/* antd 弹层背景跟随主题（Modal/Dropdown 挂在 body 下，darkAlgorithm 处理配色，这里同步圆角阴影底色细节） */
+html[data-theme="dark"] body{color-scheme:dark}
+/* 滚动条：统一细圆角、轨道透明。外壳滚动区走全局规则；
+ * 下方对关键容器显式点名，避免被第三方/库样式冲掉（侧栏、缩放预览、筛选、下拉、加载框） */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}
+html,body{scrollbar-width:thin;scrollbar-color:var(--scroll-thumb) transparent}
+/* 关键滚动容器显式覆盖（与全局同款 8px，确保不被覆盖） */
+.sb-scroll, .fwrap.on.zoomed, .tagbar, .ax-tab-menu, .loading-box,
+.api-tree-scroll, .api-doc-scroll, .api-code-scroll, .cb-code{scrollbar-width:thin}
+.sb-scroll::-webkit-scrollbar, .fwrap.on.zoomed::-webkit-scrollbar,
+.tagbar::-webkit-scrollbar, .ax-tab-menu::-webkit-scrollbar, .loading-box::-webkit-scrollbar,
+.api-tree-scroll::-webkit-scrollbar, .api-doc-scroll::-webkit-scrollbar,
+.api-code-scroll::-webkit-scrollbar, .cb-code::-webkit-scrollbar{width:8px;height:8px}
+/* API 视图：请求方法徽标（类名走白名单枚举，侧栏 / 详情 / 筛选 chips 共用） */
+.mb{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:5px;line-height:1.45;white-space:nowrap}
+.mb.GET{color:var(--m-get);background:var(--m-get-bg)}
+.mb.POST{color:var(--m-post);background:var(--m-post-bg)}
+.mb.PUT{color:var(--m-put);background:var(--m-put-bg)}
+.mb.DELETE{color:var(--m-delete);background:var(--m-delete-bg)}
+.mb.PATCH{color:var(--m-patch);background:var(--m-patch-bg)}
+.mb.HEAD,.mb.OPTIONS,.mb.ANY{color:var(--m-other);background:var(--m-other-bg)}
+mark{background:var(--mark-bg);color:var(--mark-text);border-radius:2px;padding:0 1px}

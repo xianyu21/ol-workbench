@@ -16,6 +16,8 @@ const KEYS = [
   'secClosed',  // 侧栏分组折叠状态
   'sbw',        // 侧栏宽度
   'theme',      // 界面主题偏好（auto/light/dark）
-  'zoom'        // 预览缩放（数字倍率或 'fit' 适应宽度）
+  'zoom',       // 预览缩放（数字倍率或 'fit' 适应宽度）
+  'apiDocs',   // API 视图：业务模块库（含原始 Markdown，导入的接口文档）
+  'apiFiles'   // API 视图：登记的接口文档文件（可多个，路径字符串数组，供「从文件导入」直接读取）
 ];
 module.exports = { PREFIX, KEYS };
