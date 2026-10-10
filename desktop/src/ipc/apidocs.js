@@ -1,7 +1,7 @@
 'use strict';
 /*
  * IPC：API 文档文件（可多个，供 API 视图「从文件导入」）。
- * 文件读取改 fs.promises（P0-3）：消除 statSync/readFileSync 同步阻塞。
+ * 文件读取改 fs.promises（P0-3）：消除同步阻塞。
  */
 const fs = require('fs');
 

@@ -10,7 +10,7 @@
 
 <script setup lang="ts">
 const { api } = useApiStore()
-import { hi, mcls } from '@/components/api/api-shared.js'
+import { hi, mcls } from '@/components/api/api-shared'
 import { useApiStore } from '@/stores'
 
 defineProps({

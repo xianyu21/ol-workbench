@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies (npm workspaces 单仓单 install)
+        run: npm install
+
+      - name: Unit tests (node --test, conformance 两后端 + 负向 + 守界)
+        working-directory: desktop
+        run: node --test test/*.test.js
+
+      - name: Type check (vue-tsc, 独立 step 不阻塞构建)
+        working-directory: desktop
+        run: npm run type-check
+
+      - name: Build viewer (vite, 产出 viewer-dist)
+        working-directory: desktop
+        run: npm run build:viewer

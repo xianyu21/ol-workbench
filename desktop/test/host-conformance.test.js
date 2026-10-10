@@ -182,8 +182,8 @@ test('负向：后端自造能力名必须被判死（禁止绕过契约清单�
 
 /* ── 接口纯净性（AP-02）：接口文件内不得出现厂商/技术名词 ─────────────── */
 test('接口纯净性：语义接口内不得出现厂商/技术名词', async () => {
-  // 注意：本文件保持 CJS（其余测试同风格），禁止使用 import.meta，否则 Node 22
-  // 的模块类型探测会把它判成 ESM 而 require 失效。
+  // 注意：本文件保持 CJS（其余测试同风格），禁止使用 ESM 动态 import 元数据，
+  // 否则 Node 22 的模块类型探测会把它判成 ESM 而 require 失效。
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'viewer', 'src', 'host', 'index.js'), 'utf8');

@@ -13,7 +13,7 @@
  *   HEAD 请求 body 与 stream 均为 null 但 Content-Length 保留。
  *
  * A 阶段治理（P0-3 / P0-4）：
- *   - 全部 IO 改 fs.promises + 流式，消除 readSync/openSync/statSync/readdirSync 同步阻塞；
+ *   - 全部 IO 改 fs.promises + 流式，消除同步阻塞；
  *   - 查看器目录由主进程显式 setViewerDir 注入（单源），不再四处 fallback 探测。
  */
 const fs = require('fs');
@@ -130,12 +130,12 @@ async function fileResponse (method, full, status, allowOrigin, root) {
 
 /* ---------- 读取工作台 UI（按 mtime 缓存，文件变更自动热更新，无需重启） ---------- */
 let VIEWER_HTML = null, VIEWER_MTIME = -1, VIEWER_HTML_FILE = null;
-function viewerIndexFile () {
+async function viewerIndexFile () {
   const idx = path.join(getViewerDir(), 'index.html');
-  try { fs.accessSync(idx); return idx; } catch (e) { return null; }
+  try { await fs.promises.access(idx); return idx; } catch (e) { return null; }
 }
 async function getViewerHtml () {
-  const f = viewerIndexFile();
+  const f = await viewerIndexFile();
   if (!f) {
     if (!VIEWER_HTML) VIEWER_HTML = '<!doctype html><meta charset=utf-8><h1>找不到工作台 UI</h1><p>请在 desktop/viewer 下执行 <code>npm run build</code> 生成 viewer-dist（运行 <code>npm start</code> 会自动构建）。</p>';
     return VIEWER_HTML;

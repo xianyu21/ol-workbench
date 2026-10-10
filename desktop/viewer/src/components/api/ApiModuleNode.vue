@@ -32,7 +32,7 @@
 import { computed } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
-import { hi, copyText } from '@/components/api/api-shared.js'
+import { hi, copyText } from '@/components/api/api-shared'
 import { useApiStore, useUiStore } from '@/stores'
 const apiStore = useApiStore()
 const { ui, showCtx } = useUiStore()

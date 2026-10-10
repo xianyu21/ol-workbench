@@ -147,3 +147,6 @@
 3. gh release create vX.Y.Z --title "vX.Y.Z" --notes "<该版本累积的更新内容>"
 4. cd desktop && npm run dist，产物按 dist/latest.yml 里的文件名重命名后 gh release upload
 -->
+
+## 1.3.0 - 2026-10-10
+- 见 git 提交记录与 .scratch/axhub-refactor/implementation.md
