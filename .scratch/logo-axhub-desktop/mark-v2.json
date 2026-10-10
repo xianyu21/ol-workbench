@@ -1,0 +1,42 @@
+{
+  "brand": {
+    "name_zh": "原型工作台",
+    "name_en": "AxHub Desktop"
+  },
+  "palette": {
+    "primary": "#1F1D1A",
+    "structural": "#100F0D",
+    "accent": "#A8A29A",
+    "panel": "#F3F0E8"
+  },
+  "canvas": 100,
+  "min_size_px": 16,
+  "motif": [
+    {
+      "type": "arc",
+      "cx": 50,
+      "cy": 52,
+      "rx": 24,
+      "ry": 24,
+      "start": 345,
+      "end": 285,
+      "fill": "none",
+      "stroke": "primary",
+      "width": 13,
+      "cap": "butt"
+    },
+    {
+      "type": "circle",
+      "cx": 50,
+      "cy": 52,
+      "r": 4.5,
+      "fill": "structural"
+    },
+    {
+      "type": "polygon",
+      "points": [[58, 42], [68, 38], [62, 26]],
+      "fill": "structural"
+    }
+  ],
+  "notes": "v2 redesign 'Curled Leap': near-closed open curl (F2 diagonal axis + F3 body mass) with its small opening pointing upper-right as the leap direction; central focal dot as the 'exploration' point (F5); tiny upward triangle at the opening hints the flicking fluke. Palette extracted from monochrome icon."
+}

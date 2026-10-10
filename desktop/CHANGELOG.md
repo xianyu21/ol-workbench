@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.3 · 2026-10-10
+
+- 🐛 **修复 CI 打包失败（图标步骤 `Cannot find module 'pngjs'`）**：`package-lock.json` 中 509 个依赖的 `resolved` 地址被写为淘宝镜像 `registry.npmmirror.com`，GitHub Actions（境外）拉取不稳定，`npm ci` 静默缺包后图标生成报错、双平台构建全挂。已将两个 lock 的 `resolved` 全部改回官方源 `registry.npmjs.org`，并新增仓库级 `.npmrc` 固定官方源
+- 📌 说明：本次发版内容与 v1.2.3 之前的累积改动同批（壳层模块化 + 工程化 + TS 迁移 + API 文档视图等，见下方 v1.2.2 段）；v1.2.2 因上述 CI 故障未成功产出安装包，改由 v1.2.3 交付
+
 ## v1.2.2 · 2026-10-10
 
 > 自 v1.0.40 起的累积版本（壳层模块化 + 工程化 + TypeScript 迁移 + API 文档视图），首次登 Release。
