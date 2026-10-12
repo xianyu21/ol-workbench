@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.4.0 · 2026-10-12
+
+> 自动更新增强 P0（更新渠道 / 静默安装健壮性 / 失败重试与回滚）。
+
+- 🚀 **更新渠道 stable / beta**：设置页新增渠道选择器并持久化；启动时 `autoUpdater.channel` 按配置生效，切换即重查（portable 排除）
+- 🛡 **静默安装健壮性**：`update:install` 前置 preflight（系统盘剩余 ≥300MB + 安装目录可写），不通过弹拦截卡且不安装；安装/重启错误从仅日志升级为渲染层失败事件（`install-failed`）
+- ♻️ **失败自愈**：下载失败指数退避重试（30s→2min→5min，最多 3 次）+ 手动重试入口
+- ↩️ **回滚能力**：每次 UI 就绪持久化 `lastKnownGoodVersion`；安装后首启异常（超时 30s / 渲染进程崩溃）自动回滚，并置 `blockedVersion` 防重装循环；设置页手动回滚（二次确认）
+- 🧩 **host SPI 新增 6 能力**：`updateStatus`（查询）/ `setUpdateChannel` / `requestUpdateRollback` / `reportFirstLaunchReady` / `retryDownloadNow`（命令）/ `onUpdateEvent`（订阅）；渲染层经宿主收发、不直连 `window.axhub`
+- 🧪 **测试基线 68 → 85 项**：新增 `errors` / `preflight` / `download` 三套纯逻辑单测 + preload / host-conformance 扩展
+- 🐛 **修复 `viewer/package.json` 缺 `type-check` 脚本**（打通 vue-tsc 类型门，避免 CI 类型门失效）
+- 📌 说明：beta 发布链路（`latest-beta.yml`）为部署前置，需 CI 单独产出；本地缓存旧安装包降级为 P1 可选增强（P0 改为按需从 Releases 下载旧版回滚，零常驻）；portable 维持「去 Releases 页下载」指引、不纳入增强
+
+验证：`node --test` 85/0 全绿 · `vue-tsc` 0 错 · `build:viewer` 干净 · grep 守门 0 匹配（`import.meta` 限 .ts/.vue/.mjs）
+
 ## v1.3.0 · 2026-10-10
 
 > 自 v1.2.3 起的累积版本（整体重构 A 阶段落地 + B 阶段同栈大版本升级），首次登 Release。

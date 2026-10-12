@@ -1,0 +1,90 @@
+%% ④.1 渠道切换 → 设 channel → checkForUpdates
+sequenceDiagram
+    participant U as 用户
+    participant SM as SettingsModal
+    participant H as Host(electron)
+    participant B as PreloadBridge
+    participant IPC as ipc/update.js
+    participant C as config.js
+    participant AU as autoUpdater
+
+    U->>SM: 选 beta
+    SM->>H: setUpdateChannel('beta')
+    H->>B: setUpdateChannel('beta')
+    B->>IPC: send('update:set-channel','beta')
+    IPC->>C: setUpdateState({channel:'beta'})
+    IPC->>AU: autoUpdater.channel = 'beta'
+    IPC->>AU: checkForUpdates()
+    AU-->>IPC: update-available / error
+    IPC-->>B: update:available / update:event{status}
+    B-->>H: onUpdateEvent
+    H-->>SM: 刷新卡片/状态
+
+%% ④.2 下载 → 退避重试 → 就绪 → preflight → 安装 → 重启 → 首启检查 → 异常回滚
+sequenceDiagram
+    participant AU as autoUpdater
+    participant DR as DownloadRetry
+    participant U as Updater
+    participant R as Renderer(UpdateCard)
+    participant PF as Preflight
+    participant RB as Rollback
+    participant C as config.js
+
+    Note over AU,DR: 启动 5s 静默检查命中新版本
+    AU->>DR: downloadUpdate() 失败
+    DR->>DR: scheduleNext() 30s
+    DR-->>R: update:event{download-retry, attempt:1}
+    DR->>AU: downloadUpdate() 再失败（2min,5min）
+    DR-->>R: download-retry x3
+    DR-->>R: update:event{download-exhausted}
+    Note over R: 显示「更新失败」卡 + [重试]
+    R->>DR: update:download-retry-now
+    DR->>AU: downloadUpdate() 成功
+    AU-->>U: update-downloaded
+    U->>C: setUpdateState({pendingInstall:{newVersion,oldVersion}})
+    U-->>R: update:ready{version}
+    Note over R: 就绪卡 [立即重启安装]
+    R->>U: update:install
+    U->>PF: check()
+    alt 不通过
+        PF-->>R: update:event{install-blocked}
+        Note over R: 拦截卡 + [重试][稍后]
+    else 通过
+        U->>AU: quitAndInstall(false,true)
+        Note over U: 应用退出并安装
+    end
+    Note over U: 重启后 onBootReconcile：存在 pendingInstall=newVersion
+    U->>U: armFirstLaunchWatchdog(30s)
+    R->>U: update:first-launch-ready
+    alt 30s 内收到就绪 且 无崩溃
+        U->>C: lastKnownGood=newVersion; pendingInstall=null
+    else 超时 / webContents crashed
+        U->>RB: prepare(oldVersion) 下载旧版安装包
+        U->>C: blockedVersion=newVersion; justRolledBack=true
+        U->>RB: exec() + app.quit()
+        RB-->>R: update:event{first-launch-failed}
+    end
+
+%% ④.3 手动回滚路径（P0-9）
+sequenceDiagram
+    participant U as 用户
+    participant SM as SettingsModal
+    participant H as Host
+    participant IPC as ipc/update.js
+    participant RB as Rollback
+    participant C as config.js
+
+    U->>SM: 点「回滚到上一可用版本 vX」
+    SM->>SM: Modal.confirm 二次确认
+    SM->>H: requestUpdateRollback()
+    H->>IPC: send('update:rollback')
+    IPC->>C: 读 lastKnownGoodVersion(=oldV)
+    alt lastKnownGood 存在且 != 当前
+        IPC->>RB: prepare(oldV) 下载旧版 NSIS
+        IPC->>RB: exec() + app.quit()
+        Note over RB: 旧版覆盖安装后启动
+        RB->>C: justRolledBack=true
+        Note over C: 旧版首启 onBootReconcile 派发 rolled-back 卡
+    else 无 lastKnownGood / 已是旧版
+        IPC-->>SM: 提示「无可回滚版本」
+    end

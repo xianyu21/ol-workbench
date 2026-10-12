@@ -1,0 +1,122 @@
+classDiagram
+    direction LR
+
+    class Config {
+        <<module: desktop/src/config.js>>
+        +getUpdateState() UpdateState
+        +setUpdateState(patch) void
+    }
+    class UpdateConstants {
+        <<module: desktop/src/update/constants.js>>
+        +CHANNELS: string[2]
+        +MAX_RETRIES: 3
+        +RETRY_DELAYS: number[3]
+        +FIRST_LAUNCH_TIMEOUT_MS: 30000
+        +MIN_DISK_FREE_MB: 300
+    }
+    class UpdateErrors {
+        <<module: desktop/src/update/errors.js>>
+        +FailureReason: enum
+        +describe(reason) Descriptor
+        +mapInstallError(err) FailureReason
+    }
+    class Preflight {
+        <<module: desktop/src/update/preflight.js>>
+        +check(opts) PreflightResult
+    }
+    class DownloadRetry {
+        <<module: desktop/src/update/download.js>>
+        -attempt: number
+        -timer: Timeout
+        +start(autoUpdater, onEvent) void
+        +retryNow() void
+        -scheduleNext() void
+    }
+    class Rollback {
+        <<module: desktop/src/update/rollback.js>>
+        +prepare(oldVersion, deps) Promise~void~
+        +exec(installerPath, deps) void
+    }
+    class Updater {
+        <<module: desktop/src/updater.js>>
+        +setupAutoUpdater(deps) void
+        -applyChannel() void
+        -armFirstLaunchWatchdog() void
+        -onBootReconcile() void
+    }
+    class UpdateIpc {
+        <<module: desktop/src/ipc/update.js>>
+        +register(ipcMain, c) void
+    }
+    class AppEntry {
+        <<module: desktop/main.js + src/app.js>>
+        +start(deps) void
+    }
+    class PreloadBridge {
+        <<module: desktop/src/preload-bridge.js>>
+        +buildBridge(ipcRenderer) Bridge
+    }
+    class ElectronHost {
+        <<module: viewer/src/host/electron.js>>
+        +createElectronHost(bridge) Host
+    }
+    class HeadlessHost {
+        <<module: viewer/src/host/headless.js>>
+    }
+    class HostIndex {
+        <<module: viewer/src/host/index.js>>
+        +QUERIES / COMMANDS / SUBSCRIPTIONS
+    }
+    class UpdateStore {
+        <<Pinia: viewer/src/stores/update.ts>>
+        -phase: string
+        -status: UpdateStatus
+        -retry: RetryState
+        +setChannel(ch) void
+        +refreshStatus() void
+        +installNow() void
+        +manualRollback() void
+        +retryDownload() void
+    }
+    class UseHostSignals {
+        <<composable: viewer/src/composables/useHostSignals.ts>>
+        +onUpdateEvent handler
+    }
+    class UpdateCard {
+        <<Vue: viewer/src/components/update/UpdateCard.vue>>
+    }
+    class SettingsModal {
+        <<Vue: viewer/src/components/modals/SettingsModal.vue>>
+    }
+    class ChannelSelect {
+        <<Vue: viewer/src/components/common/ChannelSelect.vue>>
+    }
+    class App {
+        <<Vue: viewer/src/App.vue>>
+    }
+
+    AppEntry --> Updater : wires
+    AppEntry --> UpdateIpc : registers
+    Updater --> Config : read/write channel,lkg
+    Updater --> DownloadRetry : uses
+    Updater --> Preflight : uses
+    Updater --> Rollback : triggers
+    Updater --> UpdateErrors : maps reasons
+    UpdateIpc --> Config : set channel/silent
+    UpdateIpc --> Preflight : install preflight
+    UpdateIpc --> Rollback : manual/auto
+    UpdateIpc --> UpdateErrors : describe
+    Preflight ..> UpdateConstants : MIN_DISK_FREE_MB
+    DownloadRetry ..> UpdateConstants : RETRY_DELAYS
+    Updater ..> UpdateConstants : FIRST_LAUNCH_TIMEOUT_MS
+    PreloadBridge --> UpdateIpc : IPC mapping
+    ElectronHost --> PreloadBridge : consumes window.axhub
+    HeadlessHost ..|> ElectronHost : conforms SPI
+    HostIndex --> ElectronHost : registers caps
+    UpdateStore --> ElectronHost : calls
+    UseHostSignals --> UpdateStore : feeds events
+    App --> UseHostSignals : uses
+    App --> UpdateCard : renders
+    SettingsModal --> ChannelSelect : embeds
+    SettingsModal --> UpdateStore : reads/writes channel,lkg
+    UpdateCard --> UpdateStore : reads phase
