@@ -39,6 +39,10 @@ export function createHeadlessHost (options) {
     },
     async appVersion () { keep('appVersion', []); return o.version || '0.0.0' },
     async lookForUpdate () { keep('lookForUpdate', []); return o.update || null },
+    async updateStatus () {
+      keep('updateStatus', [])
+      return o.updateStatus || { version: o.version || '0.0.0', channel: 'stable', lastKnownGood: o.version || '0.0.0', portable: false }
+    },
     async archiveSnapshot (snapshot) { keep('archiveSnapshot', [snapshot]); store.set('snapshot', snapshot) },
     async discardSnapshot () { keep('discardSnapshot', []); store.delete('snapshot') },
 
@@ -46,11 +50,16 @@ export function createHeadlessHost (options) {
     setBackgroundDownload (on) { keep('setBackgroundDownload', [on]) },
     answerExitRequest (action, remember) { keep('answerExitRequest', [action, remember]) },
     setPreferredExitAction (action) { keep('setPreferredExitAction', [action]) },
+    setUpdateChannel (channel) { keep('setUpdateChannel', [channel]) },
+    requestUpdateRollback () { keep('requestUpdateRollback', []) },
+    reportFirstLaunchReady () { keep('reportFirstLaunchReady', []) },
+    retryDownloadNow () { keep('retryDownloadNow', []) },
 
     onDownloadProgress (cb) { return subscribe('onDownloadProgress', cb) },
     onUpdateFound (cb) { return subscribe('onUpdateFound', cb) },
     onUpdateStaged (cb) { return subscribe('onUpdateStaged', cb) },
-    onExitRequest (cb) { return subscribe('onExitRequest', cb) }
+    onExitRequest (cb) { return subscribe('onExitRequest', cb) },
+    onUpdateEvent (cb) { return subscribe('onUpdateEvent', cb) }
   }
 
   function subscribe (name, cb) {

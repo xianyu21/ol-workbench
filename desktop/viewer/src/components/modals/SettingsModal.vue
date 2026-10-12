@@ -102,12 +102,26 @@
               </div>
               <a-switch v-model:checked="st.silentUpdate" @change="saveSilent" />
             </div>
+            <div class="row" v-if="!updateStatus.portable">
+              <div>
+                <b>更新渠道</b>
+                <div class="hint">正式版为稳定发布；测试版（beta）可抢先体验，但可能不稳定</div>
+              </div>
+              <ChannelSelect :model-value="updateStatus.channel" @update:model-value="setChannel" />
+            </div>
             <div class="row">
               <div>
                 <b>版本与更新</b>
-                <div class="hint">当前版本 v{{ appVersion }}<template v-if="lastCheck"> · 上次检查 {{ lastCheck }}</template></div>
+                <div class="hint">
+                  当前版本 v{{ appVersion }}<template v-if="updateStatus.lastKnownGood"> · 上次可用 v{{ updateStatus.lastKnownGood }}</template>
+                  <template v-if="updateStatus.channel === 'beta'"> · 渠道：{{ updateStatus.channel }}</template>
+                  <template v-if="lastCheck"> · 上次检查 {{ lastCheck }}</template>
+                </div>
               </div>
-              <a-button :loading="checking" @click="checkUpdate">检查更新</a-button>
+              <div class="acts">
+                <a-button :loading="checking" @click="checkUpdate">检查更新</a-button>
+                <a-button v-if="canRollback" danger ghost :loading="rollingBack" @click="confirmRollback">回滚到上一版本</a-button>
+              </div>
             </div>
           </div>
         </section>
@@ -145,24 +159,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import * as userData from '@/lib/user-data.js'
 import { state as themeState, setTheme } from '@/lib/theme.js'
 import SvgIcon from '@/components/common/SvgIcon.vue'
+import ChannelSelect from '@/components/common/ChannelSelect.vue'
 import { host } from '@/host/index.js'
-import { useWorkspaceStore, useSettingsStore, useApiStore, useUiStore } from '@/stores'
+import { useWorkspaceStore, useSettingsStore, useApiStore, useUiStore, useUpdateStore } from '@/stores'
 const ws = useWorkspaceStore()
 const { settings } = useSettingsStore()
 const apiStore = useApiStore()
 const { ui } = useUiStore()
 const { api } = apiStore
+const updateStore = useUpdateStore()
 
 const st = settings
 
 const appVersion = ref('…')
 const checking = ref(false)
 const lastCheck = ref('')
+const rollingBack = ref(false)
 
 /* 设置分类导航 */
 const active = ref('dir')
@@ -174,8 +191,31 @@ const cats = [
   { key: 'about', name: '关于与帮助', icon: 'info' }
 ]
 
+/* 更新状态（渠道 / 上次可用版本 / 是否便携），由宿主下发 */
+const updateStatus = updateStore.status
+const canRollback = computed(() => !updateStatus.portable && !!updateStatus.lastKnownGood && updateStatus.lastKnownGood !== updateStatus.version)
+
+function setChannel (ch: 'stable' | 'beta') {
+  ws.persist()
+  updateStore.setChannel(ch)
+  message.info(ch === 'beta' ? '已切换到测试版渠道' : '已切换到正式版渠道')
+}
+
+function confirmRollback () {
+  Modal.confirm({
+    title: '回滚到上一可用版本',
+    content: `即将回滚到 v${updateStatus.lastKnownGood}。当前版本将被覆盖安装，应用会重启。`,
+    okText: '回滚', okType: 'danger', cancelText: '取消',
+    async onOk () {
+      rollingBack.value = true
+      try { updateStore.manualRollback() } finally { rollingBack.value = false }
+    }
+  })
+}
+
 onMounted(async () => {
   if (host.supports('appVersion')) appVersion.value = await host.appVersion()
+  updateStore.refreshStatus()
 })
 
 async function checkUpdate () {

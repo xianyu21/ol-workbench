@@ -17,6 +17,13 @@ function buildBridge (ipcRenderer) {
     checkUpdate: () => ipcRenderer.invoke('update:check'),
     installUpdate: () => ipcRenderer.send('update:install'),
     setSilentUpdate: (on) => ipcRenderer.send('update:set-silent', on),
+    // 更新增强 P0：状态查询 / 渠道切换 / 回滚 / 首启就绪 / 重试 / 多路事件
+    updateStatus: () => ipcRenderer.invoke('update:status'),
+    setUpdateChannel: (ch) => ipcRenderer.send('update:set-channel', ch),
+    requestUpdateRollback: () => ipcRenderer.send('update:rollback'),
+    firstLaunchReady: () => ipcRenderer.send('update:first-launch-ready'),
+    downloadRetryNow: () => ipcRenderer.send('update:download-retry-now'),
+    onUpdateEvent: (cb) => { ipcRenderer.on('update:event', (e, payload) => cb(payload)); },
     onUpdateProgress: (cb) => { ipcRenderer.on('update:progress', (e, pct) => cb(pct)); },
     onUpdateAvailable: (cb) => { ipcRenderer.on('update:available', (e, info) => cb(info)); },
     onUpdateReady: (cb) => { ipcRenderer.on('update:ready', (e, info) => cb(info)); },

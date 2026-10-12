@@ -26,6 +26,7 @@ export function createElectronHost (bridge) {
         readDocuments: 'readApiFiles',
         appVersion: 'version',
         lookForUpdate: 'checkUpdate',
+        updateStatus: 'updateStatus',
         applyUpdate: 'installUpdate',
         setBackgroundDownload: 'setSilentUpdate',
         archiveSnapshot: 'saveUserData',
@@ -35,7 +36,12 @@ export function createElectronHost (bridge) {
         onUpdateStaged: 'onUpdateReady',
         onExitRequest: 'onCloseActionRequest',
         answerExitRequest: 'applyCloseAction',
-        setPreferredExitAction: 'saveCloseAction'
+        setPreferredExitAction: 'saveCloseAction',
+        setUpdateChannel: 'setUpdateChannel',
+        requestUpdateRollback: 'requestUpdateRollback',
+        reportFirstLaunchReady: 'firstLaunchReady',
+        retryDownloadNow: 'downloadRetryNow',
+        onUpdateEvent: 'onUpdateEvent'
       }
       return can(map[name])
     }),
@@ -52,6 +58,7 @@ export function createElectronHost (bridge) {
     async readDocuments (paths) { return (await call('readApiFiles', paths)) || [] },
     async appVersion () { return await call('version') },
     async lookForUpdate () { return await call('checkUpdate') },
+    async updateStatus () { return await call('updateStatus') },
     async archiveSnapshot (snapshot) { await call('saveUserData', snapshot) },
     async discardSnapshot () { await call('clearUserData') },
 
@@ -59,11 +66,16 @@ export function createElectronHost (bridge) {
     setBackgroundDownload (on) { call('setSilentUpdate', !!on) },
     answerExitRequest (action, remember) { call('applyCloseAction', action, remember) },
     setPreferredExitAction (action) { call('saveCloseAction', action || '') },
+    setUpdateChannel (channel) { call('setUpdateChannel', channel) },
+    requestUpdateRollback () { call('requestUpdateRollback') },
+    reportFirstLaunchReady () { call('firstLaunchReady') },
+    retryDownloadNow () { call('downloadRetryNow') },
 
     onDownloadProgress (cb) { call('onUpdateProgress', cb); return () => {} },
     onUpdateFound (cb) { call('onUpdateAvailable', cb); return () => {} },
     onUpdateStaged (cb) { call('onUpdateReady', cb); return () => {} },
-    onExitRequest (cb) { call('onCloseActionRequest', cb); return () => {} }
+    onExitRequest (cb) { call('onCloseActionRequest', cb); return () => {} },
+    onUpdateEvent (cb) { call('onUpdateEvent', cb); return () => {} }
   }
 
   return makeHost('electron', impl)

@@ -20,10 +20,11 @@ const QUERY_CASES = [
   { name: 'chooseDocuments', args: [], shape: r => Array.isArray(r) },
   { name: 'readDocuments', args: [['a.md']], shape: r => Array.isArray(r) },
   { name: 'appVersion', args: [], shape: r => typeof r === 'string' },
-  { name: 'lookForUpdate', args: [], shape: r => r === null || typeof r === 'object' }
+  { name: 'lookForUpdate', args: [], shape: r => r === null || typeof r === 'object' },
+  { name: 'updateStatus', args: [], shape: r => r && typeof r === 'object' }
 ];
-const COMMANDS = ['applyUpdate', 'setBackgroundDownload', 'answerExitRequest', 'setPreferredExitAction'];
-const SUBSCRIPTIONS = ['onDownloadProgress', 'onUpdateFound', 'onUpdateStaged', 'onExitRequest'];
+const COMMANDS = ['applyUpdate', 'setBackgroundDownload', 'answerExitRequest', 'setPreferredExitAction', 'setUpdateChannel', 'requestUpdateRollback', 'reportFirstLaunchReady', 'retryDownloadNow'];
+const SUBSCRIPTIONS = ['onDownloadProgress', 'onUpdateFound', 'onUpdateStaged', 'onExitRequest', 'onUpdateEvent'];
 
 /* ── 被所有后端共享的契约断言 ──────────────────────────────────────────── */
 async function checkContract (host, ctx) {
@@ -109,10 +110,15 @@ async function buildBackends () {
     checkUpdate: async () => { bridgeCalls.push('checkUpdate'); return { ok: true, available: false }; },
     installUpdate: () => { bridgeCalls.push('installUpdate'); },
     setSilentUpdate: (on) => { bridgeCalls.push('setSilentUpdate:' + on); },
+    updateStatus: async () => { bridgeCalls.push('updateStatus'); return { version: '1.1.5', channel: 'stable', lastKnownGood: '1.1.5', portable: false }; },
+    setUpdateChannel: (ch) => { bridgeCalls.push('setUpdateChannel:' + ch); },
+    requestUpdateRollback: () => { bridgeCalls.push('requestUpdateRollback'); },
+    firstLaunchReady: () => { bridgeCalls.push('firstLaunchReady'); },
+    downloadRetryNow: () => { bridgeCalls.push('downloadRetryNow'); },
     saveUserData: (d) => { bridgeCalls.push('saveUserData'); snapshot.set('snapshot', d); },
     clearUserData: () => { bridgeCalls.push('clearUserData'); snapshot.delete('snapshot'); },
     onUpdateProgress: () => {}, onUpdateAvailable: () => {}, onUpdateReady: () => {},
-    onCloseActionRequest: () => {}, applyCloseAction: () => {}, saveCloseAction: () => {}
+    onUpdateEvent: () => {}, onCloseActionRequest: () => {}, applyCloseAction: () => {}, saveCloseAction: () => {}
   };
 
   const store = new Map();

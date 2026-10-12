@@ -11,7 +11,7 @@ const core = require('../serve-core.js');
 const userStore = require('../user-store.js');
 const { registerAxhubProtocol } = require('./protocol.js');
 const { registerIpc } = require('./ipc/index.js');
-const { setupAutoUpdater } = require('./updater.js');
+const { setupAutoUpdater, onBootReconcile, onWebContentsCrashed } = require('./updater.js');
 const { createWindow, openViewer } = require('./window.js');
 const { ensureTray, showMainWindow } = require('./tray.js');
 const { makeLogger } = require('./logger.js');
@@ -78,9 +78,16 @@ async function start (options) {
   registerIpc(d.ipcMain, ctx);
   setupAutoUpdater({ autoUpdater: d.autoUpdater });
 
+  // 启动期对账：pendingInstall 首启看门狗 / justRolledBack 派发（须在窗口可见前完成）
+  onBootReconcile();
+
   // 打开主窗口并加载（记住的目录或空态工作台）
   const w = createWindow();
   ctx.win = w;
+  // 首启异常判定之一：渲染进程崩溃（配合看门狗超时，双重保险）
+  if (w.webContents && typeof w.webContents.on === 'function') {
+    w.webContents.on('crashed', () => onWebContentsCrashed());
+  }
   const savedDir = config.loadDir();
   ctx.savedDir = savedDir;
   if (savedDir && fs.existsSync(savedDir)) await openViewer(savedDir);

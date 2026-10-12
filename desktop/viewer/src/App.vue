@@ -116,19 +116,8 @@
         </template>
       </a-modal>
 
-      <!-- 后台静默下载：右下角非模态进度提示（不遮挡、不打断操作） -->
-      <div v-if="updatePct !== null" class="upd-toast">
-        <a-progress :percent="updatePct" size="small" status="active" :show-info="false" />
-        <div class="ut-txt">正在后台下载更新<template v-if="updateVer"> v{{ updateVer }}</template> · {{ updatePct }}%</div>
-      </div>
-
-      <!-- 更新已就绪：可立即重启安装，未操作则退出应用时自动安装 -->
-      <div v-if="updateReady" class="upd-ready">
-        <svg-icon name="box" :size="15" />
-        <span class="ur-txt">新版本<template v-if="readyVer"> v{{ readyVer }}</template> 已下载完成，重启后生效</span>
-        <a-button type="primary" size="small" @click="installNow">立即重启安装</a-button>
-        <a-button size="small" type="text" @click="updateReady = false">稍后</a-button>
-      </div>
+      <!-- 更新增强：进度/就绪/拦截/失败/回滚 统一卡片（取代内联 toast/ready） -->
+      <UpdateCard />
     </div>
   </a-config-provider>
 </template>
@@ -149,8 +138,9 @@ import BackupModal from '@/components/modals/BackupModal.vue'
 import SettingsModal from '@/components/modals/SettingsModal.vue'
 import ImportMdModal from '@/components/modals/ImportMdModal.vue'
 import ModuleNameModal from '@/components/modals/ModuleNameModal.vue'
+import UpdateCard from '@/components/update/UpdateCard.vue'
 
-import { useWorkspaceStore, useSettingsStore, useUiStore } from '@/stores'
+import { useWorkspaceStore, useSettingsStore, useUiStore, useUpdateStore } from '@/stores'
 import { useHostSignals } from '@/composables/useHostSignals'
 import { useShortcuts, openNativeNav } from '@/composables/useShortcuts'
 import { isDark } from '@/lib/theme.js'
@@ -178,8 +168,9 @@ const themeCfg = computed(() => isDark.value
 
 /* ---------- 宿主信号：关闭询问 / 后台更新 ---------- */
 const {
-  closeAsk, closeRemember, updatePct, updateVer, readyVer, updateReady, applyClose, installNow
+  closeAsk, closeRemember, applyClose
 } = useHostSignals()
+const updateStore = useUpdateStore()
 
 /* ---------- 快捷键 ---------- */
 const { toggleSidebar } = useShortcuts(isApi)
@@ -212,6 +203,9 @@ onMounted(() => {
     // API 视图下不弹：该弹窗引导的是原型目录，与接口文档无关
     if (!ws.rootDir && !ws.loadError && !isApi.value) noDirTip.value = true
   })
+  // 更新增强：拉取状态 + 首启就绪信号（仅发一次，供主进程看门狗对账）
+  updateStore.refreshStatus()
+  updateStore.reportFirstLaunchReady()
 })
 </script>
 

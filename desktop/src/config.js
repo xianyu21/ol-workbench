@@ -30,4 +30,34 @@ function saveConfig (patch) {
 function loadDir () { return loadConfig().dir || null; }
 function saveDir (d) { saveConfig({ dir: d }); }
 
-module.exports = { initConfig, loadConfig, saveConfig, loadDir, saveDir };
+/*
+ * 更新增强 · 应用级更新状态（命名空间 update:，落盘 axhub-desktop.json）。
+ * 这些字段必须由主进程在渲染层存在之前读/写（渠道启动即生效、lastKnownGood 启动即写、
+ * pendingInstall 安装后即写），因此不入 user-keys.js（渲染用户数据快照）。
+ * 既有顶层字段 silentUpdate / dir 保持不变。
+ */
+function getUpdateState () {
+  const c = loadConfig();
+  return Object.assign({
+    channel: 'stable',            // 'stable' | 'beta'
+    lastKnownGoodVersion: '',     // 末次成功启动版本；空 → 回退当前 VERSION
+    pendingInstall: null,         // { newVersion, oldVersion, stagedAt } 待安装标记
+    blockedVersion: null,         // 回滚后封锁的坏版本，避免重装循环
+    justRolledBack: false         // 本次启动是回滚后的首启（用于派发 rolled-back）
+  }, c.update || {});
+}
+
+function setUpdateState (patch) {
+  if (!CONFIG_PATH) return;
+  try {
+    const c = loadConfig();
+    const cur = getUpdateState();
+    c.update = Object.assign({}, cur, patch);
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(c, null, 2));
+  } catch (e) { /* ignore */ }
+}
+
+module.exports = {
+  initConfig, loadConfig, saveConfig, loadDir, saveDir,
+  getUpdateState, setUpdateState
+};

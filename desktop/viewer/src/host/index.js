@@ -42,7 +42,8 @@ export const QUERIES = [
   'chooseDocuments',   // () => string[]：选择接口文档文件（多选），用户取消 → []
   'readDocuments',     // (paths) => [{ name, path, size, text, error? }]
   'appVersion',        // () => string
-  'lookForUpdate'      // () => { ok, available?, version?, error? } | null
+  'lookForUpdate',     // () => { ok, available?, version?, error? } | null
+  'updateStatus'       // () => { version, channel, lastKnownGood, portable }
 ]
 
 /* 命令型：无返回值，fire-and-forget。不支持 → 静默 no-op（等同「无宿主可发」）。 */
@@ -53,7 +54,11 @@ export const COMMANDS = [
   'applyUpdate',            // () 立即安装已就绪的更新
   'setBackgroundDownload',  // (on) 后台静默下载开关
   'answerExitRequest',      // (action, remember) 回应宿主发起的退出询问
-  'setPreferredExitAction'  // (action) 记住默认退出行为
+  'setPreferredExitAction', // (action) 记住默认退出行为
+  'setUpdateChannel',       // (channel) 切换更新渠道（stable/beta）
+  'requestUpdateRollback',  // () 手动回滚到上一可用版本
+  'reportFirstLaunchReady', // () 渲染层 UI 就绪信号（首启对账）
+  'retryDownloadNow'        // () 退避耗尽后手动重试下载
 ]
 
 /* 订阅型：返回 unsubscribe */
@@ -61,7 +66,8 @@ export const SUBSCRIPTIONS = [
   'onDownloadProgress', // cb(pct|null)
   'onUpdateFound',      // cb({ version })
   'onUpdateStaged',     // cb({ version })
-  'onExitRequest'       // cb()：宿主请求确认退出
+  'onExitRequest',      // cb()：宿主请求确认退出
+  'onUpdateEvent'       // cb({type,payload})：更新增强 P0 多路复用事件
 ]
 
 export const ALL_CAPABILITIES = QUERIES.concat(COMMANDS, SUBSCRIPTIONS)
