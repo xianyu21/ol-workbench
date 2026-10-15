@@ -177,3 +177,9 @@
 3. gh release create vX.Y.Z --title "vX.Y.Z" --notes "<该版本累积的更新内容>"
 4. cd desktop && npm run dist，产物按 dist/latest.yml 里的文件名重命名后 gh release upload
 -->
+
+## v1.4.1 · 2026-10-15
+
+- **修复安装版启动后提示「找不到工作台 UI」**：`main.js` 此前无条件把 viewerDir 注入为 `__dirname/viewer-dist`，打包后 `__dirname` 落在 `app.asar` 内，而 viewer-dist 由 `extraResources` 放在 asar 外的 `resources/viewer-dist`，主进程始终指向不存在的路径。现按 `isPackaged` 分流，打包后指向 `process.resourcesPath/viewer_dist` 同级目录，与 extraResources 落点一致。
+- 新增 2 个回归守门测试：packaged 场景断言 `getViewerDir()` 解析到 `resourcesPath/viewer-dist`；源码级禁止 main.js 再无条件拼接 `__dirname/viewer-dist`。全量测试 70/70 通过。
+- 打包卫生：`build.files` 排除 `src/**/__tests__/**`，生产 asar 不再携带 update 模块的测试文件。
