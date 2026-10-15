@@ -29,7 +29,12 @@ start({
   protocol,
   net: require('electron').net,
   autoUpdater: require('electron-updater').autoUpdater,
-  viewerDir: path.join(__dirname, 'viewer-dist'),
+  // 查看器目录：开发期随仓库（desktop/viewer-dist）；打包后由 extraResources
+  // 落到 resources/viewer-dist（asar 之外）。切勿拼 __dirname——asar 内没有该目录
+  // （build.files 不含 viewer-dist），拼了就是「找不到工作台 UI」兜底页。
+  viewerDir: app.isPackaged
+    ? path.join(process.resourcesPath, 'viewer-dist')
+    : path.join(__dirname, 'viewer-dist'),
   resourcesPath: process.resourcesPath,
   isPackaged: app.isPackaged,
   userDataPath: app.getPath('userData'),
