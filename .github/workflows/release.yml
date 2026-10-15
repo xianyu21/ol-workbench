@@ -37,12 +37,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install deps (desktop)
+      # desktop 是 npm workspaces 根，viewer 是其成员：一次 npm ci 即装齐两侧依赖。
+      # 切勿在 desktop/viewer 目录再跑 npm ci —— 成员目录的独立 lock 会命中，
+      # 并清空 node_modules 只重装 viewer 依赖，导致 desktop 的 devDependencies（如 pngjs）丢失。
+      - name: Install deps (workspaces root)
         working-directory: desktop
-        run: npm ci
-
-      - name: Install deps (viewer)
-        working-directory: desktop/viewer
         run: npm ci
 
       - name: Build viewer
